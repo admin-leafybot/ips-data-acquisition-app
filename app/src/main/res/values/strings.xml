@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">IPS Data Acquisition</string>
+    
+    <!-- Tab Names -->
+    <string name="tab_home">Home</string>
+    <string name="tab_payment_status">Payment Status</string>
+    <string name="tab_bonus">Bonus</string>
+    
+    <!-- Button Labels -->
+    <string name="btn_entered_restaurant_building">Entered Restaurant Building</string>
+    <string name="btn_entered_elevator">Entered Elevator</string>
+    <string name="btn_climbing_stairs_3_floors">Climbing Stairs 3 floors</string>
+    <string name="btn_going_up_8_floors_in_lift">Going up 8 floors in Lift</string>
+    <string name="btn_reached_restaurant_corridor">Reached Restaurant Corridor</string>
+    <string name="btn_reached_restaurant">Reached Restaurant</string>
+    <string name="btn_left_restaurant">Left Restaurant</string>
+    <string name="btn_coming_down_3_floors">Coming Down 3 floors</string>
+    <string name="btn_left_restaurant_building">Left Restaurant Building</string>
+    <string name="btn_entered_delivery_building">Entered Delivery Building</string>
+    <string name="btn_reached_delivery_corridor">Reached Delivery Corridor</string>
+    <string name="btn_reached_doorstep">Reached Doorstep</string>
+    <string name="btn_left_doorstep">Left Doorstep</string>
+    <string name="btn_going_down_8_floors_in_lift">Going down 8 floors in Lift</string>
+    <string name="btn_left_delivery_building">Left Delivery Building</string>
+    
+    <!-- Session Info -->
+    <string name="session_info">Session Information</string>
+    <string name="current_session">Current Session</string>
+    <string name="no_active_session">No Active Session</string>
+    <string name="session_started">Session started at %s</string>
+    <string name="steps_completed">Steps Completed: %d</string>
+    
+    <!-- Payment Status -->
+    <string name="status_approved">Approved</string>
+    <string name="status_rejected">Rejected</string>
+    <string name="payment_paid">Paid</string>
+    <string name="payment_unpaid">Unpaid</string>
+    <string name="remarks">Remarks: %s</string>
+    
+    <!-- Notifications -->
+    <string name="notification_channel_imu">IMU Data Collection</string>
+    <string name="notification_channel_sync">Data Sync</string>
+    <string name="notification_imu_title">Collecting IMU Data</string>
+    <string name="notification_imu_text">Recording sensor data in background</string>
+    <string name="notification_sync_title">Syncing Data</string>
+    <string name="notification_sync_text">Uploading data to server</string>
+    
+    <!-- Permissions -->
+    <string name="permission_location_rationale">Location permission is required to collect GPS data for the indoor positioning system.</string>
+    <string name="permission_background_location_rationale">Background location permission is needed to collect data even when the app is not in use.</string>
+    <string name="permission_notification_rationale">Notification permission is required to show data collection status.</string>
+    
+    <!-- Errors -->
+    <string name="error_network">Network error. Data will be synced when connection is available.</string>
+    <string name="error_session_create">Failed to create session</string>
+</resources>
+
