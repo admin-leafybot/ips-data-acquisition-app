@@ -16,7 +16,11 @@ data class IMUData(
     
     @ColumnInfo(name = "timestamp")
     @SerializedName("Timestamp")
-    val timestamp: Long,
+    val timestamp: Long,  // Unix nanoseconds (wall-clock time with nano precision)
+    
+    @ColumnInfo(name = "timestamp_nanos")
+    @SerializedName("TimestampNanos")
+    val timestampNanos: Long,  // Sensor event nanoseconds (hardware timing, since boot)
     
     // Calibrated Accelerometer (m/s²)
     @ColumnInfo(name = "accel_x")

@@ -15,7 +15,7 @@ import com.ips.dataacquisition.data.model.*
         IMUData::class,
         Bonus::class
     ],
-    version = 2,
+    version = 4,  // Incremented for floorIndex field in ButtonPress
     exportSchema = false
 )
 @TypeConverters(Converters::class)

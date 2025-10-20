@@ -30,15 +30,13 @@ class BonusViewModel(
     private fun loadBonuses() {
         viewModelScope.launch {
             _isLoading.value = true
-            try {
-                bonusRepository.getAllBonuses()
-                    .collect { bonusList ->
-                        _bonuses.value = bonusList
-                        _totalBonus.value = bonusList.sumOf { it.amount }
-                    }
-            } finally {
-                _isLoading.value = false
-            }
+            bonusRepository.getAllBonuses()
+                .collect { bonusList ->
+                    _bonuses.value = bonusList
+                    _totalBonus.value = bonusList.sumOf { it.amount }
+                    // Set loading to false after first emission
+                    _isLoading.value = false
+                }
         }
     }
     

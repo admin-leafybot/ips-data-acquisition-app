@@ -8,6 +8,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AttachMoney
@@ -23,8 +24,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.ips.dataacquisition.data.local.PreferencesManager
 import com.ips.dataacquisition.service.DataSyncService
 import com.ips.dataacquisition.service.IMUDataService
+import kotlinx.coroutines.launch
 import com.ips.dataacquisition.ui.screen.BonusScreen
 import com.ips.dataacquisition.ui.screen.HomeScreen
 import com.ips.dataacquisition.ui.screen.PaymentStatusScreen
@@ -39,6 +42,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var homeViewModel: HomeViewModel
     private lateinit var paymentViewModel: PaymentStatusViewModel
     private lateinit var bonusViewModel: BonusViewModel
+    private lateinit var preferencesManager: PreferencesManager
     
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -61,12 +65,17 @@ class MainActivity : ComponentActivity() {
         android.util.Log.d("MainActivity", "MainActivity onCreate")
         android.util.Log.d("MainActivity", "==========================================")
         
+        preferencesManager = PreferencesManager(applicationContext)
+        
         val factory = ViewModelFactory(applicationContext)
         homeViewModel = ViewModelProvider(this, factory)[HomeViewModel::class.java]
         paymentViewModel = ViewModelProvider(this, factory)[PaymentStatusViewModel::class.java]
         bonusViewModel = ViewModelProvider(this, factory)[BonusViewModel::class.java]
         
         android.util.Log.d("MainActivity", "ViewModels created, requesting permissions...")
+        
+        // Observe online state to control services
+        observeOnlineStateForServices()
         
         setContent {
             IPSDataAcquisitionTheme {
@@ -115,6 +124,11 @@ class MainActivity : ComponentActivity() {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
         }
         
+        // Add ACTIVITY_RECOGNITION permission for step counter/detector (API 29+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            permissions.add(Manifest.permission.ACTIVITY_RECOGNITION)
+        }
+        
         android.util.Log.d("MainActivity", "Requesting permissions: $permissions")
         permissionLauncher.launch(permissions.toTypedArray())
     }
@@ -145,6 +159,50 @@ class MainActivity : ComponentActivity() {
         }
         
         android.util.Log.d("MainActivity", "All services started successfully")
+    }
+    
+    private fun stopServices() {
+        android.util.Log.d("MainActivity", "Stopping background services...")
+        
+        // Stop IMU Data Collection Service
+        Intent(this, IMUDataService::class.java).also { intent ->
+            stopService(intent)
+            android.util.Log.d("MainActivity", "Stopped IMUDataService")
+        }
+        
+        // Stop Data Sync Service
+        Intent(this, DataSyncService::class.java).also { intent ->
+            stopService(intent)
+            android.util.Log.d("MainActivity", "Stopped DataSyncService")
+        }
+        
+        android.util.Log.d("MainActivity", "All services stopped")
+    }
+    
+    private fun observeOnlineStateForServices() {
+        lifecycleScope.launch {
+            preferencesManager.isOnline.collect { isOnline ->
+                android.util.Log.d("MainActivity", "Online state changed: $isOnline, controlling services...")
+                
+                if (isOnline) {
+                    // User went online - start all services
+                    startServices()
+                } else {
+                    // User went offline - stop IMU data collection but keep sync running until queue is empty
+                    android.util.Log.d("MainActivity", "User went offline - stopping IMU collection, keeping sync active for pending records")
+                    
+                    // Stop IMU Data Collection Service immediately (no new data)
+                    Intent(this@MainActivity, IMUDataService::class.java).also { intent ->
+                        stopService(intent)
+                        android.util.Log.d("MainActivity", "Stopped IMUDataService (user offline)")
+                    }
+                    
+                    // Keep DataSyncService running to flush pending records
+                    // It will stop itself when queue is empty (handled in DataSyncService)
+                    android.util.Log.d("MainActivity", "DataSyncService will continue until all pending records are synced")
+                }
+            }
+        }
     }
 }
 
@@ -205,15 +263,32 @@ fun MainScreen(
                 val buttonPresses by homeViewModel.buttonPresses.collectAsStateWithLifecycle()
                 val availableActions by homeViewModel.availableActions.collectAsStateWithLifecycle()
                 val isLoading by homeViewModel.isLoading.collectAsStateWithLifecycle()
+                val isOnline by homeViewModel.isOnline.collectAsStateWithLifecycle()
+                val isCollectingData by homeViewModel.isCollectingData.collectAsStateWithLifecycle()
+                val samplesCollected by homeViewModel.samplesCollected.collectAsStateWithLifecycle()
+                val pendingSyncCount by homeViewModel.pendingSyncCount.collectAsStateWithLifecycle()
                 val errorMessage by homeViewModel.errorMessage.collectAsStateWithLifecycle()
+                val showFloorDialog by homeViewModel.showFloorDialog.collectAsStateWithLifecycle()
+                val pendingAction by homeViewModel.pendingAction.collectAsStateWithLifecycle()
+                val showSuccessMessage by homeViewModel.showSuccessMessage.collectAsStateWithLifecycle()
                 
                 HomeScreen(
                     activeSession = activeSession,
                     buttonPresses = buttonPresses,
                     availableActions = availableActions,
                     isLoading = isLoading,
+                    isOnline = isOnline,
+                    isCollectingData = isCollectingData,
+                    samplesCollected = samplesCollected,
+                    pendingSyncCount = pendingSyncCount,
                     errorMessage = errorMessage,
+                    showFloorDialog = showFloorDialog,
+                    pendingAction = pendingAction,
+                    showSuccessMessage = showSuccessMessage,
                     onButtonPress = { action -> homeViewModel.onButtonPress(action) },
+                    onFloorSelected = { floor -> homeViewModel.onFloorSelected(floor) },
+                    onDismissFloorDialog = { homeViewModel.dismissFloorDialog() },
+                    onToggleOnline = { homeViewModel.toggleOnlineStatus() },
                     onClearError = { homeViewModel.clearError() }
                 )
             }

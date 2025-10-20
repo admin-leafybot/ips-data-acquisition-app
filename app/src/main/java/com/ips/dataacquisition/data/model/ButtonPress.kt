@@ -22,6 +22,10 @@ data class ButtonPress(
     @SerializedName("Timestamp")
     val timestamp: Long,
     
+    @ColumnInfo(name = "floor_index")
+    @SerializedName("FloorIndex")
+    val floorIndex: Int? = null,  // Optional: only for stairs/lift events
+    
     @ColumnInfo(name = "is_synced")
     @SerializedName("IsSynced")
     val isSynced: Boolean = false

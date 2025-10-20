@@ -35,6 +35,7 @@ class IMUDataService : Service(), SensorEventListener {
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var sessionRepository: SessionRepository
     private lateinit var imuRepository: IMURepository
+    private lateinit var preferencesManager: com.ips.dataacquisition.data.local.PreferencesManager
     
     // All sensor references
     private var accelerometer: Sensor? = null
@@ -79,18 +80,36 @@ class IMUDataService : Service(), SensorEventListener {
     
     private var currentLocation: Location? = null
     
-    // Speed tracking for GPS optimization
-    private var isMovingSlowly = false
+    // Speed tracking for hybrid GPS optimization
+    private var isCollectingData = false  // Renamed for clarity
     private var isGPSActive = false
+    private var lastGPSUpdateTime = 0L
+    private var hasGoodGPSSignal = false
+    
+    // Fixed 100 Hz sampling using count-based downsampling
+    // Hardware runs at ~123 Hz, we want 100 Hz → capture 100/123 = ~81% of events
+    // Capture pattern: 5 out of every 6 events (83.3%) ≈ 102.5 Hz
+    private var captureCounter = 0
+    private val CAPTURE_PATTERN = 6  // Skip every 6th event to downsample from 123 Hz → ~102 Hz
     
     private var currentSessionId: String? = null
     
     companion object {
         private const val NOTIFICATION_ID = 1000
         private const val CHANNEL_ID = "imu_data_channel"
-        private const val BATCH_DURATION_MS = 5000L // 5 seconds
-        private const val SPEED_THRESHOLD = 0.5f // m/s
-        private const val ACCEL_THRESHOLD = 1.5f // m/s²
+        private const val BATCH_DURATION_MS = 3000L // 3 seconds (125 Hz × 3s = ~375 records per batch)
+        
+        // GPS thresholds (for outdoor use - prevents vehicle data collection)
+        private const val SPEED_THRESHOLD_START = 2.78f // m/s (10 km/h) - start collecting when BELOW this
+        private const val SPEED_THRESHOLD_STOP = 4.17f  // m/s (15 km/h) - stop collecting when ABOVE this
+        
+        // GPS signal quality detection
+        private const val GPS_TIMEOUT_MS = 5000L // 5 seconds - if no GPS update, consider signal lost
+        private const val GPS_ACCURACY_THRESHOLD = 50f // meters - only trust GPS speed for vehicle detection if better than this
+        // IMPORTANT: GPS location (lat/lon/alt/accuracy/speed) is ALWAYS captured in IMU data regardless of accuracy!
+        
+        // Indoor mode: Continuous capture when GPS unavailable (no accelerometer threshold)
+        // Simpler logic: If GPS is poor/lost → capture everything indoors
     }
     
     override fun onCreate() {
@@ -113,6 +132,7 @@ class IMUDataService : Service(), SensorEventListener {
             database.imuDataDao(),
             RetrofitClient.apiService
         )
+        preferencesManager = com.ips.dataacquisition.data.local.PreferencesManager(applicationContext)
         
         setupSensors()
         createNotificationChannel()
@@ -168,16 +188,95 @@ class IMUDataService : Service(), SensorEventListener {
         humidity = sensorManager.getDefaultSensor(Sensor.TYPE_RELATIVE_HUMIDITY)
         proximity = sensorManager.getDefaultSensor(Sensor.TYPE_PROXIMITY)
         
+        // Log which environmental sensors are available
+        android.util.Log.d("IMUDataService", "=== ENVIRONMENTAL SENSORS AVAILABLE ===")
+        android.util.Log.d("IMUDataService", "Pressure: ${if (pressure != null) "✅ ${pressure!!.name}" else "❌ Not available"}")
+        android.util.Log.d("IMUDataService", "Temperature: ${if (temperature != null) "✅ ${temperature!!.name}" else "❌ Not available"}")
+        android.util.Log.d("IMUDataService", "Light: ${if (light != null) "✅ ${light!!.name}" else "❌ Not available"}")
+        android.util.Log.d("IMUDataService", "Humidity: ${if (humidity != null) "✅ ${humidity!!.name}" else "❌ Not available"}")
+        android.util.Log.d("IMUDataService", "Proximity: ${if (proximity != null) "✅ ${proximity!!.name}" else "❌ Not available"}")
+        
         // Activity sensors
         stepCounter = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
         stepDetector = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR)
     }
     
     private fun startDataCollection() {
-        val delay = SensorManager.SENSOR_DELAY_FASTEST
+        // HYBRID APPROACH: Use GPS outdoors, accelerometer indoors
+        android.util.Log.d("IMUDataService", "========================================")
+        android.util.Log.d("IMUDataService", "Starting HYBRID movement detection:")
+        android.util.Log.d("IMUDataService", "  - GPS (outdoor): Prevents vehicle data (>15 km/h)")
+        android.util.Log.d("IMUDataService", "  - Accelerometer (indoor): Detects walking when GPS unavailable")
+        android.util.Log.d("IMUDataService", "========================================")
         
-        // Register all available sensors
+        // Start GPS monitoring
+        startGPSUpdates()
+        
+        // Start accelerometer for movement detection (always needed for hybrid approach)
+        android.util.Log.d("IMUDataService", "Starting accelerometer for indoor movement detection")
+        val delay = SensorManager.SENSOR_DELAY_FASTEST
         accelerometer?.let { sensorManager.registerListener(this, it, delay) }
+        
+        // Start periodic GPS signal quality check
+        startGPSSignalMonitoring()
+    }
+    
+    private fun startGPSSignalMonitoring() {
+        serviceScope.launch {
+            // Initial check: If GPS never started (lastGPSUpdateTime = 0), start collecting immediately
+            android.util.Log.d("IMUDataService", "⏱️  GPS initialization check: waiting 1 second...")
+            delay(1000) // Give GPS 1 second to initialize
+            
+            android.util.Log.d("IMUDataService", "⏱️  GPS timeout check: lastGPSUpdateTime = $lastGPSUpdateTime")
+            if (lastGPSUpdateTime == 0L) {
+                // GPS never provided any updates - assume we're indoors
+                android.util.Log.d("IMUDataService", "📡 GPS not available at startup - CONTINUOUS indoor capture")
+                android.util.Log.d("IMUDataService", "Current isCollectingData: $isCollectingData")
+                if (!isCollectingData) {
+                    android.util.Log.d("IMUDataService", "🏢 Indoor mode: Starting CONTINUOUS data collection")
+                    isCollectingData = true
+                    serviceScope.launch { preferencesManager.setCollectingData(true) }
+                    startAllSensors()
+                } else {
+                    android.util.Log.d("IMUDataService", "Already collecting data, no action needed")
+                }
+            } else {
+                android.util.Log.d("IMUDataService", "📡 GPS is working (last update: ${System.currentTimeMillis() - lastGPSUpdateTime}ms ago)")
+            }
+            
+            // Then continue monitoring for signal changes
+            while (isActive) {
+                delay(2000) // Check every 2 seconds
+                
+                val timeSinceLastGPS = System.currentTimeMillis() - lastGPSUpdateTime
+                val hadGoodSignal = hasGoodGPSSignal
+                hasGoodGPSSignal = timeSinceLastGPS < GPS_TIMEOUT_MS
+                
+                // Log signal transitions and start continuous collection when GPS lost
+                if (hadGoodSignal != hasGoodGPSSignal) {
+                    if (hasGoodGPSSignal) {
+                        android.util.Log.d("IMUDataService", "📡 GPS signal ACQUIRED - using GPS speed check")
+                    } else {
+                        android.util.Log.d("IMUDataService", "📡 GPS signal LOST (${timeSinceLastGPS}ms) - CONTINUOUS indoor capture")
+                        // GPS lost - start collecting continuously (indoor mode)
+                        if (!isCollectingData) {
+                            android.util.Log.d("IMUDataService", "🏢 Indoor mode: Starting CONTINUOUS data collection")
+                            isCollectingData = true
+                            serviceScope.launch { preferencesManager.setCollectingData(true) }
+                            startAllSensors()
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private fun startAllSensors() {
+        android.util.Log.d("IMUDataService", "Movement detected - starting ALL 21 sensors")
+        val delay = SensorManager.SENSOR_DELAY_FASTEST  // Max rate (~125 Hz on this device)
+        
+        // Motion sensors (accelerometer already running for movement detection)
+        // accelerometer?.let { sensorManager.registerListener(this, it, delay) }  // Already registered
         gyroscope?.let { sensorManager.registerListener(this, it, delay) }
         magnetometer?.let { sensorManager.registerListener(this, it, delay) }
         gravity?.let { sensorManager.registerListener(this, it, delay) }
@@ -201,6 +300,35 @@ class IMUDataService : Service(), SensorEventListener {
         stepDetector?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
     }
     
+    private fun stopAllSensors() {
+        android.util.Log.d("IMUDataService", "User moving fast (vehicle) - stopping ALL sensors EXCEPT accelerometer")
+        
+        // Stop ALL sensors EXCEPT accelerometer (need it for hybrid detection)
+        // accelerometer: Keep running for indoor movement detection
+        // accelerometer?.let { sensorManager.unregisterListener(this, it) }  // DON'T stop
+        gyroscope?.let { sensorManager.unregisterListener(this, it) }
+        magnetometer?.let { sensorManager.unregisterListener(this, it) }
+        gravity?.let { sensorManager.unregisterListener(this, it) }
+        linearAcceleration?.let { sensorManager.unregisterListener(this, it) }
+        
+        accelerometerUncalibrated?.let { sensorManager.unregisterListener(this, it) }
+        gyroscopeUncalibrated?.let { sensorManager.unregisterListener(this, it) }
+        magnetometerUncalibrated?.let { sensorManager.unregisterListener(this, it) }
+        
+        rotationVector?.let { sensorManager.unregisterListener(this, it) }
+        gameRotationVector?.let { sensorManager.unregisterListener(this, it) }
+        geomagneticRotationVector?.let { sensorManager.unregisterListener(this, it) }
+        
+        pressure?.let { sensorManager.unregisterListener(this, it) }
+        temperature?.let { sensorManager.unregisterListener(this, it) }
+        light?.let { sensorManager.unregisterListener(this, it) }
+        humidity?.let { sensorManager.unregisterListener(this, it) }
+        proximity?.let { sensorManager.unregisterListener(this, it) }
+        
+        stepCounter?.let { sensorManager.unregisterListener(this, it) }
+        stepDetector?.let { sensorManager.unregisterListener(this, it) }
+    }
+    
     private fun startBatchProcessing() {
         serviceScope.launch {
             while (isActive) {
@@ -211,35 +339,53 @@ class IMUDataService : Service(), SensorEventListener {
         }
     }
     
+    // Diagnostic counters for rate monitoring
+    private var totalAccelEvents = 0
+    private var capturedSnapshots = 0
+    private var lastRateLogTime = System.currentTimeMillis()
+    
     override fun onSensorChanged(event: SensorEvent?) {
         event ?: return
         
-        val timestamp = System.currentTimeMillis()
+        // Dual timestamps for best of both worlds
+        val wallClockNanos = System.currentTimeMillis() * 1_000_000  // Unix nanoseconds
+        val sensorNanos = event.timestamp  // Hardware sensor nanoseconds (since boot)
         
         when (event.sensor.type) {
             Sensor.TYPE_ACCELEROMETER -> {
                 currentAccel = event.values.clone()
                 
-                // Calculate magnitude for movement detection
-                val accelMagnitude = sqrt(
-                    currentAccel[0] * currentAccel[0] +
-                    currentAccel[1] * currentAccel[1] +
-                    currentAccel[2] * currentAccel[2]
-                ) - SensorManager.GRAVITY_EARTH
+                // Track total accelerometer events for diagnostics
+                totalAccelEvents++
                 
-                if (kotlin.math.abs(accelMagnitude) < ACCEL_THRESHOLD) {
-                    if (!isMovingSlowly) {
-                        isMovingSlowly = true
-                        startGPSUpdates()
-                    }
-                } else {
-                    if (isMovingSlowly) {
-                        isMovingSlowly = false
-                        stopGPSUpdates()
+                // Simple logic: Capture if collecting data (controlled by GPS)
+                if (isCollectingData) {
+                    // Fixed ~100 Hz: Skip every 6th event (capture 5 out of 6 = 83.3%)
+                    captureCounter++
+                    if (captureCounter % CAPTURE_PATTERN != 0) {
+                        captureSensorSnapshot(wallClockNanos, sensorNanos)
+                        capturedSnapshots++
                     }
                 }
                 
-                captureSensorSnapshot(timestamp)
+                // Log actual rate every 10 seconds for diagnostics
+                val now = System.currentTimeMillis()
+                if (now - lastRateLogTime >= 10000) {
+                    val duration = (now - lastRateLogTime) / 1000.0
+                    val accelRate = totalAccelEvents / duration
+                    val captureRate = capturedSnapshots / duration
+                    android.util.Log.d("IMUDataService", "=== RATE DIAGNOSTICS ===")
+                    android.util.Log.d("IMUDataService", "Accelerometer events: $accelRate Hz (hardware)")
+                    android.util.Log.d("IMUDataService", "Captured snapshots: $captureRate Hz (target: 100 Hz)")
+                    android.util.Log.d("IMUDataService", "isCollectingData: $isCollectingData | GPS signal: ${if (hasGoodGPSSignal) "GOOD" else "LOST"}")
+                    android.util.Log.d("IMUDataService", "Detection mode: ${if (hasGoodGPSSignal) "GPS speed check" else "Continuous indoor"}")
+                    android.util.Log.d("IMUDataService", "Downsampling: Skip every ${CAPTURE_PATTERN}th event (capture ${CAPTURE_PATTERN-1}/$CAPTURE_PATTERN = ${((CAPTURE_PATTERN-1)*100.0/CAPTURE_PATTERN).toInt()}%)")
+                    
+                    // Reset counters
+                    totalAccelEvents = 0
+                    capturedSnapshots = 0
+                    lastRateLogTime = now
+                }
             }
             Sensor.TYPE_GYROSCOPE -> {
                 currentGyro = event.values.clone()
@@ -295,7 +441,7 @@ class IMUDataService : Service(), SensorEventListener {
         }
     }
     
-    private fun captureSensorSnapshot(timestamp: Long) {
+    private fun captureSensorSnapshot(wallClockNanos: Long, sensorNanos: Long) {
         // Compute orientation (roll, pitch, yaw) from rotation vector
         val (roll, pitch, yaw) = computeOrientation(currentRotationVector)
         
@@ -305,7 +451,8 @@ class IMUDataService : Service(), SensorEventListener {
         synchronized(sensorDataBuffer) {
             sensorDataBuffer.add(
                 SensorDataPoint(
-                    timestamp = timestamp,
+                    timestamp = wallClockNanos,
+                    timestampNanos = sensorNanos,
                     accel = currentAccel.clone(),
                     gyro = currentGyro.clone(),
                     mag = currentMag.clone(),
@@ -413,11 +560,60 @@ class IMUDataService : Service(), SensorEventListener {
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(locationResult: LocationResult) {
             locationResult.lastLocation?.let { location ->
+                // ALWAYS capture GPS location regardless of accuracy
                 currentLocation = location
                 
-                if (location.hasSpeed() && location.speed > SPEED_THRESHOLD) {
-                    isMovingSlowly = false
-                    stopGPSUpdates()
+                // Record GPS update time for signal quality monitoring
+                lastGPSUpdateTime = System.currentTimeMillis()
+                hasGoodGPSSignal = true  // Received update, signal is good
+                
+                val speed = if (location.hasSpeed()) location.speed else 0f
+                val accuracy = if (location.hasAccuracy()) location.accuracy else Float.MAX_VALUE
+                val speedKmh = speed * 3.6
+                
+                android.util.Log.d("IMUDataService", String.format("📡 GPS: lat=%.6f, lon=%.6f, acc=%.0fm, speed=%.1f km/h", 
+                    location.latitude, location.longitude, accuracy, speedKmh))
+                
+                // ONLY use GPS for movement detection when signal is good
+                // NOTE: GPS location is ALWAYS captured in IMU data, regardless of accuracy
+                if (accuracy < GPS_ACCURACY_THRESHOLD) {
+                    // Good GPS signal - use it to prevent vehicle data collection
+                    if (!isCollectingData) {
+                        // Currently NOT collecting - check if we should START
+                        if (speed < SPEED_THRESHOLD_START) {
+                            val thresholdKmh = SPEED_THRESHOLD_START * 3.6
+                            android.util.Log.d("IMUDataService", String.format("🚗 GPS (outdoor): Speed < %.1f km/h - START data collection", thresholdKmh))
+                            isCollectingData = true
+                            serviceScope.launch { preferencesManager.setCollectingData(true) }
+                            startAllSensors()
+                        }
+                        else{
+
+                        }
+                    } else {
+                        // Currently collecting - check if we should STOP
+                        if (speed > SPEED_THRESHOLD_STOP) {
+                            val thresholdKmh = SPEED_THRESHOLD_STOP * 3.6
+                            android.util.Log.d("IMUDataService", String.format("🚗 GPS (outdoor): Speed > %.1f km/h - STOP data collection (VEHICLE)", thresholdKmh))
+                            isCollectingData = false
+                            captureCounter = 0
+                            serviceScope.launch { preferencesManager.setCollectingData(false) }
+                            stopAllSensors()
+                            synchronized(sensorDataBuffer) {
+                                val discarded = sensorDataBuffer.size
+                                sensorDataBuffer.clear()
+                                if (discarded > 0) {
+                                    android.util.Log.d("IMUDataService", String.format("Discarded %d samples (vehicle speed: %.1f km/h)", discarded, speedKmh))
+                                }
+                            }
+                        }
+                        else{
+
+                        }
+                    }
+                } else {
+                    // Poor GPS accuracy - will use continuous indoor capture (handled by GPS signal monitoring)
+                    android.util.Log.d("IMUDataService", String.format("📡 GPS: Poor accuracy %.0fm - continuous indoor mode", accuracy))
                 }
             }
         }
@@ -435,16 +631,22 @@ class IMUDataService : Service(), SensorEventListener {
             return
         }
         
+        android.util.Log.d("IMUDataService", "=== BATCH PROCESSING ===")
         android.util.Log.d("IMUDataService", "Processing batch with ${batch.size} sensor readings")
+        android.util.Log.d("IMUDataService", "Expected: ~300 per batch (100 Hz target × 3s)")
+        android.util.Log.d("IMUDataService", "Actual rate: ${batch.size / 3.0} Hz (may be lower if hardware throttled)")
         
         val sessionId = currentSessionId ?: serviceScope.async {
             sessionRepository.getActiveSession()?.sessionId
         }.await()
         
+        android.util.Log.d("IMUDataService", "Session ID: ${sessionId ?: "null (no active session)"}")
+        
         val imuDataList = batch.map { dataPoint ->
             IMUData(
                 sessionId = sessionId,
-                timestamp = dataPoint.timestamp,
+                timestamp = dataPoint.timestamp,  // Unix nanoseconds (wall-clock)
+                timestampNanos = dataPoint.timestampNanos,  // Sensor nanoseconds (hardware)
                 
                 // Calibrated sensors
                 accelX = dataPoint.accel[0],
@@ -532,6 +734,11 @@ class IMUDataService : Service(), SensorEventListener {
         android.util.Log.d("IMUDataService", "Saving ${imuDataList.size} IMU data points to database")
         imuRepository.saveIMUDataBatch(imuDataList)
         android.util.Log.d("IMUDataService", "IMU batch saved to queue successfully")
+        
+        // Update samples collected counter
+        serviceScope.launch {
+            preferencesManager.incrementSamplesCollected(imuDataList.size)
+        }
     }
     
     private fun createNotificationChannel() {
@@ -569,7 +776,8 @@ class IMUDataService : Service(), SensorEventListener {
     }
     
     private data class SensorDataPoint(
-        val timestamp: Long,
+        val timestamp: Long,  // Unix nanoseconds (wall-clock)
+        val timestampNanos: Long,  // Sensor nanoseconds (hardware timing)
         val accel: FloatArray,
         val gyro: FloatArray,
         val mag: FloatArray,

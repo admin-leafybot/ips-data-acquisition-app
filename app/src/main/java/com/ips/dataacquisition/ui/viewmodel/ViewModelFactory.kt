@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.ips.dataacquisition.data.local.AppDatabase
+import com.ips.dataacquisition.data.local.PreferencesManager
 import com.ips.dataacquisition.data.remote.RetrofitClient
 import com.ips.dataacquisition.data.repository.BonusRepository
 import com.ips.dataacquisition.data.repository.SessionRepository
@@ -14,6 +15,7 @@ class ViewModelFactory(private val context: Context) : ViewModelProvider.Factory
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         val database = AppDatabase.getDatabase(context)
         val apiService = RetrofitClient.apiService
+        val preferencesManager = PreferencesManager(context)
         
         return when {
             modelClass.isAssignableFrom(HomeViewModel::class.java) -> {
@@ -22,7 +24,7 @@ class ViewModelFactory(private val context: Context) : ViewModelProvider.Factory
                     database.buttonPressDao(),
                     apiService
                 )
-                HomeViewModel(sessionRepository) as T
+                HomeViewModel(context, sessionRepository, preferencesManager) as T
             }
             modelClass.isAssignableFrom(PaymentStatusViewModel::class.java) -> {
                 val sessionRepository = SessionRepository(

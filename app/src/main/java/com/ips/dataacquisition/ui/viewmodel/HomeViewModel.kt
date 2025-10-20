@@ -1,16 +1,24 @@
 package com.ips.dataacquisition.ui.viewmodel
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ips.dataacquisition.data.local.AppDatabase
+import com.ips.dataacquisition.data.local.PreferencesManager
 import com.ips.dataacquisition.data.model.ButtonAction
 import com.ips.dataacquisition.data.model.ButtonPress
 import com.ips.dataacquisition.data.model.Session
+import com.ips.dataacquisition.data.remote.RetrofitClient
+import com.ips.dataacquisition.data.repository.IMURepository
 import com.ips.dataacquisition.data.repository.SessionRepository
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 class HomeViewModel(
-    private val sessionRepository: SessionRepository
+    private val context: Context,
+    private val sessionRepository: SessionRepository,
+    private val preferencesManager: PreferencesManager
 ) : ViewModel() {
     
     private val _activeSession = MutableStateFlow<Session?>(null)
@@ -20,7 +28,7 @@ class HomeViewModel(
     val buttonPresses: StateFlow<List<ButtonPress>> = _buttonPresses.asStateFlow()
     
     private val _availableActions = MutableStateFlow<List<ButtonAction>>(
-        listOf(ButtonAction.ENTERED_RESTAURANT_BUILDING)
+        listOf(ButtonAction.LEFT_RESTAURANT_BUILDING)  // Session starts here now
     )
     val availableActions: StateFlow<List<ButtonAction>> = _availableActions.asStateFlow()
     
@@ -30,11 +38,49 @@ class HomeViewModel(
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
     
+    private val _isOnline = MutableStateFlow(false)
+    val isOnline: StateFlow<Boolean> = _isOnline.asStateFlow()
+    
+    private val _isCollectingData = MutableStateFlow(false)
+    val isCollectingData: StateFlow<Boolean> = _isCollectingData.asStateFlow()
+    
+    private val _samplesCollected = MutableStateFlow(0L)
+    val samplesCollected: StateFlow<Long> = _samplesCollected.asStateFlow()
+    
+    // Floor selection state
+    private val _showFloorDialog = MutableStateFlow(false)
+    val showFloorDialog: StateFlow<Boolean> = _showFloorDialog.asStateFlow()
+    
+    private val _pendingAction = MutableStateFlow<ButtonAction?>(null)
+    val pendingAction: StateFlow<ButtonAction?> = _pendingAction.asStateFlow()
+    
+    // Session completion success message
+    private val _showSuccessMessage = MutableStateFlow(false)
+    val showSuccessMessage: StateFlow<Boolean> = _showSuccessMessage.asStateFlow()
+    
+    private val _pendingSyncCount = MutableStateFlow(0)
+    val pendingSyncCount: StateFlow<Int> = _pendingSyncCount.asStateFlow()
+    
     private var hasEnteredDeliveryBuilding = false
     private var buttonPressFlowJob: kotlinx.coroutines.Job? = null
+    private var autoOfflineJob: kotlinx.coroutines.Job? = null
+    private var pendingSyncMonitorJob: kotlinx.coroutines.Job? = null
+    
+    private lateinit var imuRepository: IMURepository
     
     init {
+        // Initialize IMU repository
+        val database = AppDatabase.getDatabase(context)
+        imuRepository = IMURepository(
+            database.imuDataDao(),
+            RetrofitClient.apiService
+        )
+        
         loadActiveSession()
+        observeOnlineState()
+        observeCollectionState()
+        startAutoOfflineMonitor()
+        startPendingSyncMonitor()
     }
     
     private fun loadActiveSession() {
@@ -91,16 +137,124 @@ class HomeViewModel(
         _availableActions.value = nextActions
     }
     
-    fun onButtonPress(action: ButtonAction) {
+    private fun observeOnlineState() {
         viewModelScope.launch {
-            android.util.Log.d("HomeViewModel", "Button pressed: ${action.name}")
+            preferencesManager.isOnline.collect { online ->
+                _isOnline.value = online
+                android.util.Log.d("HomeViewModel", "Online state changed: $online")
+                
+                if (!online) {
+                    // Reset samples counter when going offline
+                    preferencesManager.resetSamplesCollected()
+                }
+            }
+        }
+    }
+    
+    private fun observeCollectionState() {
+        viewModelScope.launch {
+            preferencesManager.isCollectingData.collect { collecting ->
+                _isCollectingData.value = collecting
+                android.util.Log.d("HomeViewModel", "Collection state changed: $collecting")
+            }
+        }
+        
+        viewModelScope.launch {
+            preferencesManager.samplesCollected.collect { samples ->
+                _samplesCollected.value = samples
+            }
+        }
+    }
+    
+    private fun startPendingSyncMonitor() {
+        pendingSyncMonitorJob = viewModelScope.launch {
+            while (true) {
+                try {
+                    // Query pending count from repositories
+                    val pendingIMU = imuRepository.getUnsyncedCount()
+                    val pendingButtons = sessionRepository.getUnsyncedButtonPressCount()
+                    val total = pendingIMU + pendingButtons
+                    
+                    android.util.Log.d("HomeViewModel", "=== PENDING SYNC MONITOR ===")
+                    android.util.Log.d("HomeViewModel", "Pending buttons: $pendingButtons")
+                    android.util.Log.d("HomeViewModel", "Pending IMU: $pendingIMU")
+                    android.util.Log.d("HomeViewModel", "Total pending: $total")
+                    android.util.Log.d("HomeViewModel", "Previous UI count: ${_pendingSyncCount.value}")
+                    
+                    _pendingSyncCount.value = total
+                    
+                    android.util.Log.d("HomeViewModel", "Updated UI count to: $total")
+                } catch (e: Exception) {
+                    android.util.Log.e("HomeViewModel", "Error checking pending sync count", e)
+                }
+                
+                // Check every 2 seconds for more responsive UI
+                delay(2000)
+            }
+        }
+    }
+    
+    private fun startAutoOfflineMonitor() {
+        autoOfflineJob = viewModelScope.launch {
+            while (true) {
+                delay(60_000) // Check every minute
+                
+                if (_isOnline.value) {
+                    val timedOut = preferencesManager.checkAndHandleTimeout()
+                    if (timedOut) {
+                        android.util.Log.w("HomeViewModel", "User auto-offlined due to inactivity")
+                        _errorMessage.value = "Auto-offline: No activity for 2 hours"
+                    }
+                }
+            }
+        }
+    }
+    
+    fun toggleOnlineStatus() {
+        viewModelScope.launch {
+            val newState = !_isOnline.value
+            preferencesManager.setOnline(newState)
+            
+            if (newState) {
+                // Going online
+                android.util.Log.d("HomeViewModel", "User went ONLINE")
+                preferencesManager.updateLastActivity()
+            } else {
+                // Going offline
+                android.util.Log.d("HomeViewModel", "User went OFFLINE")
+            }
+        }
+    }
+    
+    fun onButtonPress(action: ButtonAction, floorIndex: Int? = null) {
+        viewModelScope.launch {
+            android.util.Log.d("HomeViewModel", "Button pressed: ${action.name}, floor: $floorIndex")
+            
+            // Check if user is online
+            if (!_isOnline.value) {
+                android.util.Log.w("HomeViewModel", "Button press ignored - user is OFFLINE")
+                _errorMessage.value = "Please go ONLINE to record data"
+                return@launch
+            }
+            
+            // Check if this action requires floor input
+            if (ButtonAction.requiresFloorInput(action) && floorIndex == null) {
+                android.util.Log.d("HomeViewModel", "Action requires floor input, showing dialog")
+                _pendingAction.value = action
+                _showFloorDialog.value = true
+                return@launch
+            }
+            
             _isLoading.value = true
             _errorMessage.value = null
             
+            // Update last activity timestamp
+            preferencesManager.updateLastActivity()
+            
             try {
-                // Start session if this is the first button press
+                // Start session if this is the first button press (LEFT_RESTAURANT_BUILDING is now the first button)
                 val sessionId = if (_activeSession.value == null && 
-                    action == ButtonAction.ENTERED_RESTAURANT_BUILDING) {
+                    action == ButtonAction.LEFT_RESTAURANT_BUILDING) {
                     android.util.Log.d("HomeViewModel", "Creating new session...")
                     // Create new session
                     val result = sessionRepository.createSession()
@@ -130,8 +284,8 @@ class HomeViewModel(
                 }
                 
                 // Record button press to database (queued for sync)
-                android.util.Log.d("HomeViewModel", "Recording button press: ${action.name} for session: $sessionId")
-                val result = sessionRepository.recordButtonPress(sessionId, action)
+                android.util.Log.d("HomeViewModel", "Recording button press: ${action.name} for session: $sessionId, floor: $floorIndex")
+                val result = sessionRepository.recordButtonPress(sessionId, action, floorIndex)
                 
                 if (result.isFailure) {
                     android.util.Log.e("HomeViewModel", "Failed to record button press", result.exceptionOrNull())
@@ -139,19 +293,27 @@ class HomeViewModel(
                 } else {
                     android.util.Log.d("HomeViewModel", "Button press recorded successfully")
                 }
-                // Note: UI will update automatically via Flow when database changes
                 
                 // Close session if this is the last button
                 if (action == ButtonAction.LEFT_DELIVERY_BUILDING) {
                     android.util.Log.d("HomeViewModel", "Closing session: $sessionId")
                     sessionRepository.closeSession(sessionId)
                     
+                    // Show success message
+                    _showSuccessMessage.value = true
+                    
+                    // Hide success message after 3 seconds
+                    viewModelScope.launch {
+                        kotlinx.coroutines.delay(3000)
+                        _showSuccessMessage.value = false
+                    }
+                    
                     // Reset state
                     buttonPressFlowJob?.cancel()
                     _activeSession.value = null
                     _buttonPresses.value = emptyList()
                     hasEnteredDeliveryBuilding = false
-                    _availableActions.value = listOf(ButtonAction.ENTERED_RESTAURANT_BUILDING)
+                    _availableActions.value = listOf(ButtonAction.LEFT_RESTAURANT_BUILDING)  // Reset to first button
                 }
                 
             } catch (e: Exception) {
@@ -168,8 +330,26 @@ class HomeViewModel(
         _errorMessage.value = null
     }
     
+    fun onFloorSelected(floorNumber: Int) {
+        viewModelScope.launch {
+            _showFloorDialog.value = false
+            val action = _pendingAction.value
+            if (action != null) {
+                _pendingAction.value = null
+                onButtonPress(action, floorNumber)
+            }
+        }
+    }
+    
+    fun dismissFloorDialog() {
+        _showFloorDialog.value = false
+        _pendingAction.value = null
+    }
+    
     override fun onCleared() {
         super.onCleared()
         buttonPressFlowJob?.cancel()
+        autoOfflineJob?.cancel()
+        pendingSyncMonitorJob?.cancel()
     }
 }

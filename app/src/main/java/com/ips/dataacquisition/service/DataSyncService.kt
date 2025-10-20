@@ -12,10 +12,12 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.ips.dataacquisition.R
 import com.ips.dataacquisition.data.local.AppDatabase
+import com.ips.dataacquisition.data.local.PreferencesManager
 import com.ips.dataacquisition.data.remote.RetrofitClient
 import com.ips.dataacquisition.data.repository.IMURepository
 import com.ips.dataacquisition.data.repository.SessionRepository
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 
 class DataSyncService : Service() {
     
@@ -25,6 +27,7 @@ class DataSyncService : Service() {
     private lateinit var sessionRepository: SessionRepository
     private lateinit var imuRepository: IMURepository
     private lateinit var connectivityManager: ConnectivityManager
+    private lateinit var preferencesManager: PreferencesManager
     
     private var isNetworkAvailable = false
     private var consecutiveFailures = 0
@@ -32,7 +35,7 @@ class DataSyncService : Service() {
     companion object {
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "data_sync_channel"
-        private const val BASE_SYNC_INTERVAL_MS = 10000L // 10 seconds when online
+        private const val BASE_SYNC_INTERVAL_MS = 3000L // 3 seconds when online (100 Hz × 3s = 300 records, send up to 1000)
         private const val MAX_SYNC_INTERVAL_MS = 300000L // 5 minutes max when offline
         private const val MAX_CONSECUTIVE_FAILURES = 5
     }
@@ -72,6 +75,8 @@ class DataSyncService : Service() {
             database.imuDataDao(),
             RetrofitClient.apiService
         )
+        
+        preferencesManager = PreferencesManager(applicationContext)
         
         connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         
@@ -189,10 +194,29 @@ class DataSyncService : Service() {
             
             if (syncSuccess) {
                 consecutiveFailures = 0
-                val pendingCount = imuRepository.getUnsyncedCount()
-                val message = if (pendingCount > 0) "Synced. Pending: $pendingCount" else "All data synced ✓"
+                val pendingIMU = imuRepository.getUnsyncedCount()
+                val pendingButtonPresses = sessionRepository.getUnsyncedButtonPressCount()
+                val totalPending = pendingIMU + pendingButtonPresses
+                
+                val message = if (totalPending > 0) {
+                    "Synced. Pending: $pendingButtonPresses button(s), $pendingIMU IMU"
+                } else {
+                    "All data synced ✓"
+                }
                 android.util.Log.d("DataSyncService", message)
                 updateNotification(message)
+                
+                // Check if user is offline AND no pending records - if so, stop service
+                val isOnline = preferencesManager.isOnline.first()
+                if (!isOnline && totalPending == 0) {
+                    android.util.Log.d("DataSyncService", "========================================")
+                    android.util.Log.d("DataSyncService", "User is OFFLINE and ALL records synced")
+                    android.util.Log.d("DataSyncService", "Stopping DataSyncService gracefully")
+                    android.util.Log.d("DataSyncService", "========================================")
+                    updateNotification("All data synced. Service stopping...")
+                    delay(2000) // Show notification briefly
+                    stopSelf()
+                }
             } else {
                 consecutiveFailures++
                 if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {

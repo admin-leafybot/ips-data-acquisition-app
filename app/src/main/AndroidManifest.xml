@@ -10,6 +10,7 @@
     <!-- Sensor Permissions -->
     <uses-permission android:name="android.permission.BODY_SENSORS" />
     <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
     <!-- Network Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />

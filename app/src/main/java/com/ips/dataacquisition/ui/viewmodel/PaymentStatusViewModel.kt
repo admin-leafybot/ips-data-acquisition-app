@@ -27,16 +27,14 @@ class PaymentStatusViewModel(
     private fun loadSessions() {
         viewModelScope.launch {
             _isLoading.value = true
-            try {
-                sessionRepository.getAllSessions()
-                    .collect { sessionList ->
-                        _sessions.value = sessionList.filter { 
-                            it.endTimestamp != null 
-                        }
+            sessionRepository.getAllSessions()
+                .collect { sessionList ->
+                    _sessions.value = sessionList.filter { 
+                        it.endTimestamp != null 
                     }
-            } finally {
-                _isLoading.value = false
-            }
+                    // Set loading to false after first emission
+                    _isLoading.value = false
+                }
         }
     }
     

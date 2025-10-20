@@ -19,15 +19,17 @@ class IMURepository(
     }
     
     suspend fun getUnsyncedCount(): Int {
-        return imuDataDao.getUnsyncedCount()
+        val count = imuDataDao.getUnsyncedCount()
+        android.util.Log.d("IMURepository", "Queried unsynced IMU data count: $count")
+        return count
     }
     
     suspend fun syncIMUData(): Boolean {
         return try {
             var allSuccess = true
             
-            // Get unsynced data in batches
-            val unsyncedData = imuDataDao.getUnsyncedIMUData(limit = 500)
+            // Get unsynced data in batches (100 Hz × 3s = 300 records, fetch 1000 to handle backlog)
+            val unsyncedData = imuDataDao.getUnsyncedIMUData(limit = 1000)
             android.util.Log.d("IMURepository", "=== IMU QUEUE STATUS ===")
             android.util.Log.d("IMURepository", "Unsynced IMU data points in queue: ${unsyncedData.size}")
             
@@ -58,9 +60,14 @@ class IMURepository(
                         android.util.Log.d("IMURepository", "API Response Code: ${response.code()}")
                         
                         if (response.isSuccessful && response.body()?.success == true) {
-                            // Mark successfully uploaded batch as synced
-                            imuDataDao.markIMUDataSynced(dataPoints.map { it.id })
-                            android.util.Log.d("IMURepository", "✓ IMU batch synced successfully (${dataPoints.size} points)")
+                            // Delete from database after successful sync (save memory)
+                            imuDataDao.deleteIMUDataByIds(dataPoints.map { it.id })
+                            android.util.Log.d("IMURepository", "✓ IMU batch synced and deleted from local DB (${dataPoints.size} points)")
+                            
+                            // Small delay between batches to prevent overwhelming backend
+                            if (index < groupedBySession.size - 1) {
+                                kotlinx.coroutines.delay(100) // 100ms between batches
+                            }
                         } else {
                             val errorBody = response.errorBody()?.string()
                             android.util.Log.e("IMURepository", "✗ API failed for IMU batch: ${response.code()}")
@@ -79,15 +86,7 @@ class IMURepository(
                 }
             }
             
-            // Clean up old synced data (older than 7 days) - only if online
-            if (allSuccess) {
-                try {
-                    val sevenDaysAgo = System.currentTimeMillis() - (7 * 24 * 60 * 60 * 1000)
-                    imuDataDao.deleteOldSyncedData(sevenDaysAgo)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
+            // No need to clean old data - we delete immediately after sync
             
             allSuccess
         } catch (e: Exception) {

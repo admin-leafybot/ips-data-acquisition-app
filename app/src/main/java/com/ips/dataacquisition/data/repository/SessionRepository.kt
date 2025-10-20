@@ -23,6 +23,12 @@ class SessionRepository(
     
     suspend fun getActiveSession(): Session? = sessionDao.getActiveSession()
     
+    suspend fun getUnsyncedButtonPressCount(): Int {
+        val count = buttonPressDao.getUnsyncedCount()
+        android.util.Log.d("SessionRepo", "Queried unsynced button press count: $count")
+        return count
+    }
+    
     suspend fun createSession(): Result<String> {
         return try {
             val sessionId = UUID.randomUUID().toString()
@@ -63,6 +69,7 @@ class SessionRepository(
             val session = sessionDao.getSessionById(sessionId)
             
             if (session != null) {
+                // First update: Mark as completed, not synced yet
                 val updatedSession = session.copy(
                     endTimestamp = timestamp,
                     status = SessionStatus.COMPLETED,
@@ -70,15 +77,31 @@ class SessionRepository(
                 )
                 sessionDao.updateSession(updatedSession)
                 
-                // Try to close on backend
+                // Try to close on backend immediately
+                var syncedSuccessfully = false
                 try {
-                    apiService.closeSession(
+                    val response = apiService.closeSession(
                         SessionUpdateRequest(sessionId, timestamp)
                     )
+                    if (response.isSuccessful && response.body()?.success == true) {
+                        // SUCCESS! Mark as synced to prevent duplicate close requests
+                        android.util.Log.d("SessionRepo", "✓ Session closed on backend immediately: $sessionId")
+                        sessionDao.markSessionSynced(sessionId)
+                        syncedSuccessfully = true
+                    } else {
+                        android.util.Log.d("SessionRepo", "Backend close failed, will retry in background sync")
+                    }
                 } catch (e: Exception) {
-                    // Will sync later
+                    // Network error - will sync later via background service
+                    android.util.Log.d("SessionRepo", "Network error closing session, will retry in background sync")
                     e.printStackTrace()
                 }
+                
+                // Clean up synced button presses for this session
+                // Wait a bit to ensure UI has time to show final state
+                kotlinx.coroutines.delay(1000)
+                buttonPressDao.deleteButtonPressesBySession(sessionId)
+                android.util.Log.d("SessionRepo", "Cleaned up button presses for closed session: $sessionId (synced: $syncedSuccessfully)")
                 
                 Result.success(Unit)
             } else {
@@ -89,19 +112,20 @@ class SessionRepository(
         }
     }
     
-    suspend fun recordButtonPress(sessionId: String, action: ButtonAction): Result<Unit> {
+    suspend fun recordButtonPress(sessionId: String, action: ButtonAction, floorIndex: Int? = null): Result<Unit> {
         return try {
             val timestamp = System.currentTimeMillis()
             val buttonPress = ButtonPress(
                 sessionId = sessionId,
                 action = action.name,
                 timestamp = timestamp,
+                floorIndex = floorIndex,  // Include floor number
                 isSynced = false  // Mark as not synced, queue will handle it
             )
             
             // Save to queue, background service will sync
             buttonPressDao.insertButtonPress(buttonPress)
-            android.util.Log.d("SessionRepo", "Button press saved to queue: ${action.name} for session $sessionId")
+            android.util.Log.d("SessionRepo", "Button press saved to queue: ${action.name} for session $sessionId, floor: $floorIndex")
             
             Result.success(Unit)
         } catch (e: Exception) {
@@ -156,9 +180,9 @@ class SessionRepository(
                     android.util.Log.d("SessionRepo", "API Response Body: ${response.body()}")
                     
                     if (response.isSuccessful && response.body()?.success == true) {
-                        // Mark this specific button press as synced
-                        buttonPressDao.markButtonPressesSynced(listOf(buttonPress.id))
-                        android.util.Log.d("SessionRepo", "✓ Button press synced successfully: ${buttonPress.action}")
+                        // Mark as synced but DON'T delete (need for UI flow in active sessions)
+                        buttonPressDao.markButtonPressSynced(buttonPress.id)
+                        android.util.Log.d("SessionRepo", "✓ Button press synced: ${buttonPress.action}")
                     } else {
                         val errorBody = response.errorBody()?.string()
                         android.util.Log.e("SessionRepo", "✗ API failed for button press")

@@ -25,5 +25,8 @@ interface IMUDataDao {
     
     @Query("DELETE FROM imu_data WHERE session_id = :sessionId")
     suspend fun deleteIMUDataBySession(sessionId: String)
+    
+    @Query("DELETE FROM imu_data WHERE id IN (:ids)")
+    suspend fun deleteIMUDataByIds(ids: List<Long>)
 }
 
