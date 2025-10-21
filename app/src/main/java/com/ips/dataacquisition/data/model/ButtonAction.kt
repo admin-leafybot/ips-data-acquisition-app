@@ -15,6 +15,7 @@ enum class ButtonAction(val displayName: String) {
     // DISABLED: LEFT_RESTAURANT("Left Restaurant"),
     COMING_DOWN_STAIRS("Coming Down Stairs"),  // Renamed from COMING_DOWN_3_FLOORS
     LEFT_RESTAURANT_BUILDING("Left Restaurant Building"),  // SESSION START
+    REACHED_SOCIETY_GATE("Reached Society Gate"),  // New button - triggers continuous logging
     ENTERED_DELIVERY_BUILDING("Entered Delivery Building"),
     REACHED_DELIVERY_CORRIDOR("Reached Delivery Corridor"),
     REACHED_DOORSTEP("Reached Doorstep"),
@@ -46,7 +47,9 @@ enum class ButtonAction(val displayName: String) {
                 // START: Session begins at LEFT_RESTAURANT_BUILDING
                 null, LEFT_DELIVERY_BUILDING -> listOf(LEFT_RESTAURANT_BUILDING)
                 
-                LEFT_RESTAURANT_BUILDING -> listOf(ENTERED_DELIVERY_BUILDING)
+                LEFT_RESTAURANT_BUILDING -> listOf(REACHED_SOCIETY_GATE)
+                
+                REACHED_SOCIETY_GATE -> listOf(ENTERED_DELIVERY_BUILDING)
                 
                 ENTERED_DELIVERY_BUILDING -> listOf(
                     ENTERED_ELEVATOR,
@@ -159,6 +162,7 @@ fun ButtonAction.localizedName(): String {
         ButtonAction.GOING_UP_IN_LIFT -> context.getString(R.string.btn_going_up_in_lift)
         ButtonAction.COMING_DOWN_STAIRS -> context.getString(R.string.btn_coming_down_stairs)
         ButtonAction.LEFT_RESTAURANT_BUILDING -> context.getString(R.string.btn_left_restaurant_building)
+        ButtonAction.REACHED_SOCIETY_GATE -> context.getString(R.string.btn_reached_society_gate)
         ButtonAction.ENTERED_DELIVERY_BUILDING -> context.getString(R.string.btn_entered_delivery_building)
         ButtonAction.REACHED_DELIVERY_CORRIDOR -> context.getString(R.string.btn_reached_delivery_corridor)
         ButtonAction.REACHED_DOORSTEP -> context.getString(R.string.btn_reached_doorstep)

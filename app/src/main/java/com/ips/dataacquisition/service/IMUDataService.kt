@@ -81,10 +81,9 @@ class IMUDataService : Service(), SensorEventListener {
     private var currentLocation: Location? = null
     
     // Speed tracking for hybrid GPS optimization
-    private var isCollectingData = false  // Renamed for clarity
-    private var isGPSActive = false
-    private var lastGPSUpdateTime = 0L
-    private var hasGoodGPSSignal = false
+    private var isCollectingData = false  // Controls whether data is being captured
+    private var captureTimerJob: Job? = null  // Timer for auto-stop after duration
+    private var captureMode: CaptureMode = CaptureMode.STOPPED
     
     // Fixed 100 Hz sampling using count-based downsampling
     // Hardware runs at ~123 Hz, we want 100 Hz → capture 100/123 = ~81% of events
@@ -94,22 +93,26 @@ class IMUDataService : Service(), SensorEventListener {
     
     private var currentSessionId: String? = null
     
+    private enum class CaptureMode {
+        STOPPED,           // Not capturing
+        TIMED,            // Capturing for a fixed duration
+        CONTINUOUS        // Capturing until explicitly stopped
+    }
+    
     companion object {
         private const val NOTIFICATION_ID = 1000
         private const val CHANNEL_ID = "imu_data_channel"
-        private const val BATCH_DURATION_MS = 3000L // 3 seconds (125 Hz × 3s = ~375 records per batch)
+        private const val BATCH_DURATION_MS = 3000L // 3 seconds (100 Hz × 3s = 300 records per batch)
         
-        // GPS thresholds (for outdoor use - prevents vehicle data collection)
-        private const val SPEED_THRESHOLD_START = 2.78f // m/s (10 km/h) - start collecting when BELOW this
-        private const val SPEED_THRESHOLD_STOP = 4.17f  // m/s (15 km/h) - stop collecting when ABOVE this
+        // Time-based capture durations
+        private const val CAPTURE_DURATION_AFTER_LEFT_RESTAURANT = 2 * 60 * 1000L // 2 minutes
+        private const val CAPTURE_DURATION_AFTER_LEFT_DELIVERY = 3 * 60 * 1000L // 3 minutes
         
-        // GPS signal quality detection
-        private const val GPS_TIMEOUT_MS = 5000L // 5 seconds - if no GPS update, consider signal lost
-        private const val GPS_ACCURACY_THRESHOLD = 50f // meters - only trust GPS speed for vehicle detection if better than this
-        // IMPORTANT: GPS location (lat/lon/alt/accuracy/speed) is ALWAYS captured in IMU data regardless of accuracy!
-        
-        // Indoor mode: Continuous capture when GPS unavailable (no accelerometer threshold)
-        // Simpler logic: If GPS is poor/lost → capture everything indoors
+        // Intent actions for controlling data capture
+        const val ACTION_START_CAPTURE_TIMED = "com.ips.dataacquisition.START_CAPTURE_TIMED"
+        const val ACTION_START_CAPTURE_CONTINUOUS = "com.ips.dataacquisition.START_CAPTURE_CONTINUOUS"
+        const val ACTION_STOP_CAPTURE = "com.ips.dataacquisition.STOP_CAPTURE"
+        const val EXTRA_DURATION_MS = "duration_ms"
     }
     
     override fun onCreate() {
@@ -120,7 +123,7 @@ class IMUDataService : Service(), SensorEventListener {
         android.util.Log.d("IMUDataService", "========================================")
         
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)  // Still needed for GPS data in IMU readings
         
         val database = AppDatabase.getDatabase(applicationContext)
         sessionRepository = SessionRepository(
@@ -140,22 +143,126 @@ class IMUDataService : Service(), SensorEventListener {
         android.util.Log.d("IMUDataService", "Starting foreground with notification...")
         startForeground(NOTIFICATION_ID, createNotification())
         
-        android.util.Log.d("IMUDataService", "Starting sensor data collection...")
-        startDataCollection()
+        android.util.Log.d("IMUDataService", "Starting batch processing...")
         startBatchProcessing()
         
-        android.util.Log.d("IMUDataService", "IMU service fully initialized and running")
+        android.util.Log.d("IMUDataService", "========================================")
+        android.util.Log.d("IMUDataService", "IMU service initialized - waiting for button press events")
+        android.util.Log.d("IMUDataService", "Data capture controlled by:")
+        android.util.Log.d("IMUDataService", "  - LEFT_RESTAURANT_BUILDING → 2 min timed capture")
+        android.util.Log.d("IMUDataService", "  - REACHED_SOCIETY_GATE → continuous capture")
+        android.util.Log.d("IMUDataService", "  - LEFT_DELIVERY_BUILDING → 3 min timed capture then stop")
+        android.util.Log.d("IMUDataService", "========================================")
     }
     
     override fun onBind(intent: Intent?): IBinder? = null
     
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        android.util.Log.d("IMUDataService", "onStartCommand called with flags=$flags, startId=$startId")
+        android.util.Log.d("IMUDataService", "onStartCommand called with action=${intent?.action}, flags=$flags, startId=$startId")
+        
+        // Update session ID if provided
         intent?.getStringExtra("session_id")?.let {
             currentSessionId = it
             android.util.Log.d("IMUDataService", "Session ID updated: $it")
         }
+        
+        // Handle control actions
+        when (intent?.action) {
+            ACTION_START_CAPTURE_TIMED -> {
+                val durationMs = intent.getLongExtra(EXTRA_DURATION_MS, CAPTURE_DURATION_AFTER_LEFT_RESTAURANT)
+                startTimedCapture(durationMs)
+            }
+            ACTION_START_CAPTURE_CONTINUOUS -> {
+                startContinuousCapture()
+            }
+            ACTION_STOP_CAPTURE -> {
+                stopDataCapture()
+            }
+        }
+        
         return START_STICKY
+    }
+    
+    /**
+     * Start time-based data capture that automatically stops after a duration
+     */
+    private fun startTimedCapture(durationMs: Long) {
+        android.util.Log.d("IMUDataService", "========================================")
+        android.util.Log.d("IMUDataService", "Starting TIMED capture for ${durationMs / 1000} seconds")
+        android.util.Log.d("IMUDataService", "========================================")
+        
+        // Cancel any existing timer
+        captureTimerJob?.cancel()
+        
+        // Start all sensors
+        startAllSensors()
+        isCollectingData = true
+        captureMode = CaptureMode.TIMED
+        
+        // Update preferences so UI reflects capture state
+        serviceScope.launch { 
+            preferencesManager.setCollectingData(true)
+        }
+        
+        // Set timer to auto-stop
+        captureTimerJob = serviceScope.launch {
+            delay(durationMs)
+            android.util.Log.d("IMUDataService", "⏱️ Timer expired - auto-stopping data capture")
+            stopDataCapture()
+        }
+        
+        updateNotification("Capturing data (${durationMs / 60000} min timer)")
+    }
+    
+    /**
+     * Start continuous data capture that runs until explicitly stopped
+     */
+    private fun startContinuousCapture() {
+        android.util.Log.d("IMUDataService", "========================================")
+        android.util.Log.d("IMUDataService", "Starting CONTINUOUS capture")
+        android.util.Log.d("IMUDataService", "========================================")
+        
+        // Cancel any existing timer
+        captureTimerJob?.cancel()
+        
+        // Start all sensors
+        startAllSensors()
+        isCollectingData = true
+        captureMode = CaptureMode.CONTINUOUS
+        
+        // Update preferences so UI reflects capture state
+        serviceScope.launch { 
+            preferencesManager.setCollectingData(true)
+        }
+        
+        updateNotification("Capturing data (continuous)")
+    }
+    
+    /**
+     * Stop data capture and all sensors
+     */
+    private fun stopDataCapture() {
+        android.util.Log.d("IMUDataService", "========================================")
+        android.util.Log.d("IMUDataService", "Stopping data capture")
+        android.util.Log.d("IMUDataService", "========================================")
+        
+        // Cancel timer if running
+        captureTimerJob?.cancel()
+        captureTimerJob = null
+        
+        // Stop collecting
+        isCollectingData = false
+        captureMode = CaptureMode.STOPPED
+        
+        // Update preferences so UI reflects stopped state
+        serviceScope.launch { 
+            preferencesManager.setCollectingData(false)
+        }
+        
+        // Stop all sensors
+        stopAllSensors()
+        
+        updateNotification("Idle - waiting for next session")
     }
     
     override fun onTaskRemoved(intent: Intent?) {
@@ -201,82 +308,15 @@ class IMUDataService : Service(), SensorEventListener {
         stepDetector = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR)
     }
     
-    private fun startDataCollection() {
-        // HYBRID APPROACH: Use GPS outdoors, accelerometer indoors
-        android.util.Log.d("IMUDataService", "========================================")
-        android.util.Log.d("IMUDataService", "Starting HYBRID movement detection:")
-        android.util.Log.d("IMUDataService", "  - GPS (outdoor): Prevents vehicle data (>15 km/h)")
-        android.util.Log.d("IMUDataService", "  - Accelerometer (indoor): Detects walking when GPS unavailable")
-        android.util.Log.d("IMUDataService", "========================================")
-        
-        // Start GPS monitoring
-        startGPSUpdates()
-        
-        // Start accelerometer for movement detection (always needed for hybrid approach)
-        android.util.Log.d("IMUDataService", "Starting accelerometer for indoor movement detection")
-        val delay = SensorManager.SENSOR_DELAY_FASTEST
-        accelerometer?.let { sensorManager.registerListener(this, it, delay) }
-        
-        // Start periodic GPS signal quality check
-        startGPSSignalMonitoring()
-    }
-    
-    private fun startGPSSignalMonitoring() {
-        serviceScope.launch {
-            // Initial check: If GPS never started (lastGPSUpdateTime = 0), start collecting immediately
-            android.util.Log.d("IMUDataService", "⏱️  GPS initialization check: waiting 1 second...")
-            delay(1000) // Give GPS 1 second to initialize
-            
-            android.util.Log.d("IMUDataService", "⏱️  GPS timeout check: lastGPSUpdateTime = $lastGPSUpdateTime")
-            if (lastGPSUpdateTime == 0L) {
-                // GPS never provided any updates - assume we're indoors
-                android.util.Log.d("IMUDataService", "📡 GPS not available at startup - CONTINUOUS indoor capture")
-                android.util.Log.d("IMUDataService", "Current isCollectingData: $isCollectingData")
-                if (!isCollectingData) {
-                    android.util.Log.d("IMUDataService", "🏢 Indoor mode: Starting CONTINUOUS data collection")
-                    isCollectingData = true
-                    serviceScope.launch { preferencesManager.setCollectingData(true) }
-                    startAllSensors()
-                } else {
-                    android.util.Log.d("IMUDataService", "Already collecting data, no action needed")
-                }
-            } else {
-                android.util.Log.d("IMUDataService", "📡 GPS is working (last update: ${System.currentTimeMillis() - lastGPSUpdateTime}ms ago)")
-            }
-            
-            // Then continue monitoring for signal changes
-            while (isActive) {
-                delay(2000) // Check every 2 seconds
-                
-                val timeSinceLastGPS = System.currentTimeMillis() - lastGPSUpdateTime
-                val hadGoodSignal = hasGoodGPSSignal
-                hasGoodGPSSignal = timeSinceLastGPS < GPS_TIMEOUT_MS
-                
-                // Log signal transitions and start continuous collection when GPS lost
-                if (hadGoodSignal != hasGoodGPSSignal) {
-                    if (hasGoodGPSSignal) {
-                        android.util.Log.d("IMUDataService", "📡 GPS signal ACQUIRED - using GPS speed check")
-                    } else {
-                        android.util.Log.d("IMUDataService", "📡 GPS signal LOST (${timeSinceLastGPS}ms) - CONTINUOUS indoor capture")
-                        // GPS lost - start collecting continuously (indoor mode)
-                        if (!isCollectingData) {
-                            android.util.Log.d("IMUDataService", "🏢 Indoor mode: Starting CONTINUOUS data collection")
-                            isCollectingData = true
-                            serviceScope.launch { preferencesManager.setCollectingData(true) }
-                            startAllSensors()
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
     private fun startAllSensors() {
-        android.util.Log.d("IMUDataService", "Movement detected - starting ALL 21 sensors")
+        android.util.Log.d("IMUDataService", "Starting ALL sensors for data capture")
         val delay = SensorManager.SENSOR_DELAY_FASTEST  // Max rate (~125 Hz on this device)
         
-        // Motion sensors (accelerometer already running for movement detection)
-        // accelerometer?.let { sensorManager.registerListener(this, it, delay) }  // Already registered
+        // Start GPS for location data
+        startGPSUpdates()
+        
+        // Motion sensors
+        accelerometer?.let { sensorManager.registerListener(this, it, delay) }
         gyroscope?.let { sensorManager.registerListener(this, it, delay) }
         magnetometer?.let { sensorManager.registerListener(this, it, delay) }
         gravity?.let { sensorManager.registerListener(this, it, delay) }
@@ -298,35 +338,6 @@ class IMUDataService : Service(), SensorEventListener {
         
         stepCounter?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
         stepDetector?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
-    }
-    
-    private fun stopAllSensors() {
-        android.util.Log.d("IMUDataService", "User moving fast (vehicle) - stopping ALL sensors EXCEPT accelerometer")
-        
-        // Stop ALL sensors EXCEPT accelerometer (need it for hybrid detection)
-        // accelerometer: Keep running for indoor movement detection
-        // accelerometer?.let { sensorManager.unregisterListener(this, it) }  // DON'T stop
-        gyroscope?.let { sensorManager.unregisterListener(this, it) }
-        magnetometer?.let { sensorManager.unregisterListener(this, it) }
-        gravity?.let { sensorManager.unregisterListener(this, it) }
-        linearAcceleration?.let { sensorManager.unregisterListener(this, it) }
-        
-        accelerometerUncalibrated?.let { sensorManager.unregisterListener(this, it) }
-        gyroscopeUncalibrated?.let { sensorManager.unregisterListener(this, it) }
-        magnetometerUncalibrated?.let { sensorManager.unregisterListener(this, it) }
-        
-        rotationVector?.let { sensorManager.unregisterListener(this, it) }
-        gameRotationVector?.let { sensorManager.unregisterListener(this, it) }
-        geomagneticRotationVector?.let { sensorManager.unregisterListener(this, it) }
-        
-        pressure?.let { sensorManager.unregisterListener(this, it) }
-        temperature?.let { sensorManager.unregisterListener(this, it) }
-        light?.let { sensorManager.unregisterListener(this, it) }
-        humidity?.let { sensorManager.unregisterListener(this, it) }
-        proximity?.let { sensorManager.unregisterListener(this, it) }
-        
-        stepCounter?.let { sensorManager.unregisterListener(this, it) }
-        stepDetector?.let { sensorManager.unregisterListener(this, it) }
     }
     
     private fun startBatchProcessing() {
@@ -377,8 +388,7 @@ class IMUDataService : Service(), SensorEventListener {
                     android.util.Log.d("IMUDataService", "=== RATE DIAGNOSTICS ===")
                     android.util.Log.d("IMUDataService", "Accelerometer events: $accelRate Hz (hardware)")
                     android.util.Log.d("IMUDataService", "Captured snapshots: $captureRate Hz (target: 100 Hz)")
-                    android.util.Log.d("IMUDataService", "isCollectingData: $isCollectingData | GPS signal: ${if (hasGoodGPSSignal) "GOOD" else "LOST"}")
-                    android.util.Log.d("IMUDataService", "Detection mode: ${if (hasGoodGPSSignal) "GPS speed check" else "Continuous indoor"}")
+                    android.util.Log.d("IMUDataService", "isCollectingData: $isCollectingData | Mode: $captureMode")
                     android.util.Log.d("IMUDataService", "Downsampling: Skip every ${CAPTURE_PATTERN}th event (capture ${CAPTURE_PATTERN-1}/$CAPTURE_PATTERN = ${((CAPTURE_PATTERN-1)*100.0/CAPTURE_PATTERN).toInt()}%)")
                     
                     // Reset counters
@@ -525,8 +535,6 @@ class IMUDataService : Service(), SensorEventListener {
     }
     
     private fun startGPSUpdates() {
-        if (isGPSActive) return
-        
         if (ActivityCompat.checkSelfPermission(
                 this,
                 Manifest.permission.ACCESS_FINE_LOCATION
@@ -545,27 +553,18 @@ class IMUDataService : Service(), SensorEventListener {
             locationCallback,
             mainLooper
         )
-        
-        isGPSActive = true
     }
     
     private fun stopGPSUpdates() {
-        if (!isGPSActive) return
-        
         fusedLocationClient.removeLocationUpdates(locationCallback)
         currentLocation = null
-        isGPSActive = false
     }
     
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(locationResult: LocationResult) {
             locationResult.lastLocation?.let { location ->
-                // ALWAYS capture GPS location regardless of accuracy
+                // Simply capture GPS location for IMU data
                 currentLocation = location
-                
-                // Record GPS update time for signal quality monitoring
-                lastGPSUpdateTime = System.currentTimeMillis()
-                hasGoodGPSSignal = true  // Received update, signal is good
                 
                 val speed = if (location.hasSpeed()) location.speed else 0f
                 val accuracy = if (location.hasAccuracy()) location.accuracy else Float.MAX_VALUE
@@ -573,48 +572,6 @@ class IMUDataService : Service(), SensorEventListener {
                 
                 android.util.Log.d("IMUDataService", String.format("📡 GPS: lat=%.6f, lon=%.6f, acc=%.0fm, speed=%.1f km/h", 
                     location.latitude, location.longitude, accuracy, speedKmh))
-                
-                // ONLY use GPS for movement detection when signal is good
-                // NOTE: GPS location is ALWAYS captured in IMU data, regardless of accuracy
-                if (accuracy < GPS_ACCURACY_THRESHOLD) {
-                    // Good GPS signal - use it to prevent vehicle data collection
-                    if (!isCollectingData) {
-                        // Currently NOT collecting - check if we should START
-                        if (speed < SPEED_THRESHOLD_START) {
-                            val thresholdKmh = SPEED_THRESHOLD_START * 3.6
-                            android.util.Log.d("IMUDataService", String.format("🚗 GPS (outdoor): Speed < %.1f km/h - START data collection", thresholdKmh))
-                            isCollectingData = true
-                            serviceScope.launch { preferencesManager.setCollectingData(true) }
-                            startAllSensors()
-                        }
-                        else{
-
-                        }
-                    } else {
-                        // Currently collecting - check if we should STOP
-                        if (speed > SPEED_THRESHOLD_STOP) {
-                            val thresholdKmh = SPEED_THRESHOLD_STOP * 3.6
-                            android.util.Log.d("IMUDataService", String.format("🚗 GPS (outdoor): Speed > %.1f km/h - STOP data collection (VEHICLE)", thresholdKmh))
-                            isCollectingData = false
-                            captureCounter = 0
-                            serviceScope.launch { preferencesManager.setCollectingData(false) }
-                            stopAllSensors()
-                            synchronized(sensorDataBuffer) {
-                                val discarded = sensorDataBuffer.size
-                                sensorDataBuffer.clear()
-                                if (discarded > 0) {
-                                    android.util.Log.d("IMUDataService", String.format("Discarded %d samples (vehicle speed: %.1f km/h)", discarded, speedKmh))
-                                }
-                            }
-                        }
-                        else{
-
-                        }
-                    }
-                } else {
-                    // Poor GPS accuracy - will use continuous indoor capture (handled by GPS signal monitoring)
-                    android.util.Log.d("IMUDataService", String.format("📡 GPS: Poor accuracy %.0fm - continuous indoor mode", accuracy))
-                }
             }
         }
     }
@@ -757,10 +714,29 @@ class IMUDataService : Service(), SensorEventListener {
         }
     }
     
+    private fun stopAllSensors() {
+        android.util.Log.d("IMUDataService", "Stopping all sensors")
+        sensorManager.unregisterListener(this)
+        stopGPSUpdates()
+    }
+    
+    private fun updateNotification(status: String) {
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("IPS Data Collection")
+            .setContentText(status)
+            .setSmallIcon(R.drawable.ic_sensors)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .build()
+        
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager.notify(NOTIFICATION_ID, notification)
+    }
+    
     private fun createNotification(): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Recording Sensor Data")
-            .setContentText("Collecting GPS and IMU data...")
+            .setContentTitle("IPS Data Collection")
+            .setContentText("Service initialized")
             .setSmallIcon(R.drawable.ic_sensors)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
@@ -770,6 +746,7 @@ class IMUDataService : Service(), SensorEventListener {
     override fun onDestroy() {
         super.onDestroy()
         android.util.Log.w("IMUDataService", "Service being destroyed!")
+        captureTimerJob?.cancel()
         sensorManager.unregisterListener(this)
         stopGPSUpdates()
         serviceScope.cancel()

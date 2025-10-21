@@ -19,6 +19,7 @@ object LocalizedStrings {
             ButtonAction.LEFT_DOORSTEP -> context.getString(R.string.btn_left_doorstep)
             ButtonAction.GOING_DOWN_IN_LIFT -> context.getString(R.string.btn_going_down_in_lift)
             ButtonAction.LEFT_DELIVERY_BUILDING -> context.getString(R.string.btn_left_delivery_building)
+            ButtonAction.REACHED_SOCIETY_GATE -> context.getString(R.string.btn_reached_society_gate)
         }
     }
 }

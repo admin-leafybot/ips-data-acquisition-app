@@ -1,6 +1,7 @@
 package com.ips.dataacquisition.ui.viewmodel
 
 import android.content.Context
+import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ips.dataacquisition.data.local.AppDatabase
@@ -294,6 +295,9 @@ class HomeViewModel(
                     android.util.Log.d("HomeViewModel", "Button press recorded successfully")
                 }
                 
+                // Control IMU data capture based on button pressed
+                controlIMUDataCapture(action)
+                
                 // Close session if this is the last button
                 if (action == ButtonAction.LEFT_DELIVERY_BUILDING) {
                     android.util.Log.d("HomeViewModel", "Closing session: $sessionId")
@@ -346,6 +350,43 @@ class HomeViewModel(
         _pendingAction.value = null
     }
     
+    /**
+     * Control IMU data capture based on which button was pressed
+     */
+    private fun controlIMUDataCapture(action: ButtonAction) {
+        val intent = Intent(context, com.ips.dataacquisition.service.IMUDataService::class.java)
+        
+        when (action) {
+            ButtonAction.LEFT_RESTAURANT_BUILDING -> {
+                // Start 2-minute timed capture
+                android.util.Log.d("HomeViewModel", "📊 Starting 2-min timed capture (LEFT_RESTAURANT_BUILDING)")
+                intent.action = com.ips.dataacquisition.service.IMUDataService.ACTION_START_CAPTURE_TIMED
+                intent.putExtra(com.ips.dataacquisition.service.IMUDataService.EXTRA_DURATION_MS, 2 * 60 * 1000L)
+                context.startService(intent)
+            }
+            
+            ButtonAction.REACHED_SOCIETY_GATE -> {
+                // Start continuous capture
+                android.util.Log.d("HomeViewModel", "📊 Starting CONTINUOUS capture (REACHED_SOCIETY_GATE)")
+                intent.action = com.ips.dataacquisition.service.IMUDataService.ACTION_START_CAPTURE_CONTINUOUS
+                context.startService(intent)
+            }
+            
+            ButtonAction.LEFT_DELIVERY_BUILDING -> {
+                // Start 3-minute timed capture (will auto-stop after 3 mins)
+                android.util.Log.d("HomeViewModel", "📊 Starting 3-min timed capture (LEFT_DELIVERY_BUILDING)")
+                intent.action = com.ips.dataacquisition.service.IMUDataService.ACTION_START_CAPTURE_TIMED
+                intent.putExtra(com.ips.dataacquisition.service.IMUDataService.EXTRA_DURATION_MS, 3 * 60 * 1000L)
+                context.startService(intent)
+            }
+            
+            else -> {
+                // Other buttons don't affect data capture
+                android.util.Log.d("HomeViewModel", "Button ${action.name} - no capture control action")
+            }
+        }
+    }
+    
     fun cancelSession() {
         viewModelScope.launch {
             try {
@@ -358,6 +399,12 @@ class HomeViewModel(
                     
                     if (result.isSuccess) {
                         android.util.Log.d("HomeViewModel", "Session cancelled successfully")
+                        
+                        // Stop IMU data capture
+                        android.util.Log.d("HomeViewModel", "📊 Stopping data capture (session cancelled)")
+                        val intent = Intent(context, com.ips.dataacquisition.service.IMUDataService::class.java)
+                        intent.action = com.ips.dataacquisition.service.IMUDataService.ACTION_STOP_CAPTURE
+                        context.startService(intent)
                         
                         // Reset state
                         buttonPressFlowJob?.cancel()

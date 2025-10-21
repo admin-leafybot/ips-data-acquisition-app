@@ -41,6 +41,7 @@
     <string name="btn_going_up_in_lift">लिफ्ट में ऊपर जा रहे हैं</string>
     <string name="btn_coming_down_stairs">सीढ़ियों से नीचे आना</string>
     <string name="btn_left_restaurant_building">रेस्तरां बिल्डिंग छोड़ दी</string>
+    <string name="btn_reached_society_gate">सोसाइटी गेट पर पहुंचे</string>
     <string name="btn_entered_delivery_building">डिलीवरी बिल्डिंग में प्रवेश किया</string>
     <string name="btn_reached_delivery_corridor">डिलीवरी कॉरिडोर पहुंचे</string>
     <string name="btn_reached_doorstep">दरवाजे पर पहुंचे</string>
