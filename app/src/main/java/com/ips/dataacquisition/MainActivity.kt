@@ -14,9 +14,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Payment
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -24,6 +26,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.ips.dataacquisition.R
 import com.ips.dataacquisition.data.local.PreferencesManager
 import com.ips.dataacquisition.service.DataSyncService
 import com.ips.dataacquisition.service.IMUDataService
@@ -31,10 +34,12 @@ import kotlinx.coroutines.launch
 import com.ips.dataacquisition.ui.screen.BonusScreen
 import com.ips.dataacquisition.ui.screen.HomeScreen
 import com.ips.dataacquisition.ui.screen.PaymentStatusScreen
+import com.ips.dataacquisition.ui.screen.SettingsScreen
 import com.ips.dataacquisition.ui.theme.IPSDataAcquisitionTheme
 import com.ips.dataacquisition.ui.viewmodel.BonusViewModel
 import com.ips.dataacquisition.ui.viewmodel.HomeViewModel
 import com.ips.dataacquisition.ui.viewmodel.PaymentStatusViewModel
+import com.ips.dataacquisition.ui.viewmodel.SettingsViewModel
 import com.ips.dataacquisition.ui.viewmodel.ViewModelFactory
 
 class MainActivity : ComponentActivity() {
@@ -42,6 +47,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var homeViewModel: HomeViewModel
     private lateinit var paymentViewModel: PaymentStatusViewModel
     private lateinit var bonusViewModel: BonusViewModel
+    private lateinit var settingsViewModel: SettingsViewModel
     private lateinit var preferencesManager: PreferencesManager
     
     private val permissionLauncher = registerForActivityResult(
@@ -71,18 +77,23 @@ class MainActivity : ComponentActivity() {
         homeViewModel = ViewModelProvider(this, factory)[HomeViewModel::class.java]
         paymentViewModel = ViewModelProvider(this, factory)[PaymentStatusViewModel::class.java]
         bonusViewModel = ViewModelProvider(this, factory)[BonusViewModel::class.java]
+        settingsViewModel = ViewModelProvider(this, factory)[SettingsViewModel::class.java]
         
         android.util.Log.d("MainActivity", "ViewModels created, requesting permissions...")
         
         // Observe online state to control services
         observeOnlineStateForServices()
         
+        // Observe language changes to recreate activity
+        observeLanguageChanges()
+        
         setContent {
             IPSDataAcquisitionTheme {
                 MainScreen(
                     homeViewModel = homeViewModel,
                     paymentViewModel = paymentViewModel,
-                    bonusViewModel = bonusViewModel
+                    bonusViewModel = bonusViewModel,
+                    settingsViewModel = settingsViewModel
                 )
             }
         }
@@ -204,6 +215,36 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+    
+    private fun observeLanguageChanges() {
+        lifecycleScope.launch {
+            var firstRun = true
+            settingsViewModel.currentLanguage.collect { languageCode ->
+                if (firstRun) {
+                    // Skip first emission (initial value)
+                    firstRun = false
+                    applyLanguage(languageCode)
+                } else {
+                    // Language changed by user - apply and recreate activity
+                    applyLanguage(languageCode)
+                    recreate()
+                }
+            }
+        }
+    }
+    
+    private fun applyLanguage(languageCode: String) {
+        val locale = when (languageCode) {
+            "hi" -> java.util.Locale("hi", "IN")
+            else -> java.util.Locale("en", "US")
+        }
+        java.util.Locale.setDefault(locale)
+        
+        val config = resources.configuration
+        config.setLocale(locale)
+        createConfigurationContext(config)
+        resources.updateConfiguration(config, resources.displayMetrics)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -211,7 +252,8 @@ class MainActivity : ComponentActivity() {
 fun MainScreen(
     homeViewModel: HomeViewModel,
     paymentViewModel: PaymentStatusViewModel,
-    bonusViewModel: BonusViewModel
+    bonusViewModel: BonusViewModel,
+    settingsViewModel: SettingsViewModel
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -221,8 +263,8 @@ fun MainScreen(
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
-                    label = { Text("Home") },
+                    icon = { Icon(Icons.Default.Home, contentDescription = stringResource(R.string.tab_home)) },
+                    label = { Text(stringResource(R.string.tab_home)) },
                     selected = currentRoute == "home",
                     onClick = {
                         navController.navigate("home") {
@@ -231,8 +273,8 @@ fun MainScreen(
                     }
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.Payment, contentDescription = "Payment Status") },
-                    label = { Text("Payment") },
+                    icon = { Icon(Icons.Default.Payment, contentDescription = stringResource(R.string.tab_payment_status)) },
+                    label = { Text(stringResource(R.string.tab_payment_status)) },
                     selected = currentRoute == "payment",
                     onClick = {
                         navController.navigate("payment") {
@@ -241,11 +283,21 @@ fun MainScreen(
                     }
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.AttachMoney, contentDescription = "Bonus") },
-                    label = { Text("Bonus") },
+                    icon = { Icon(Icons.Default.AttachMoney, contentDescription = stringResource(R.string.tab_bonus)) },
+                    label = { Text(stringResource(R.string.tab_bonus)) },
                     selected = currentRoute == "bonus",
                     onClick = {
                         navController.navigate("bonus") {
+                            popUpTo("home")
+                        }
+                    }
+                )
+                NavigationBarItem(
+                    icon = { Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.tab_settings)) },
+                    label = { Text(stringResource(R.string.tab_settings)) },
+                    selected = currentRoute == "settings",
+                    onClick = {
+                        navController.navigate("settings") {
                             popUpTo("home")
                         }
                     }
@@ -318,6 +370,17 @@ fun MainScreen(
                     isLoading = isLoading,
                     //isRefreshing = isRefreshing,
                     //onRefresh = { bonusViewModel.refreshBonuses() }
+                )
+            }
+            
+            composable("settings") {
+                val currentLanguage by settingsViewModel.currentLanguage.collectAsStateWithLifecycle()
+                
+                SettingsScreen(
+                    currentLanguage = currentLanguage,
+                    onLanguageChange = { languageCode ->
+                        settingsViewModel.changeLanguage(languageCode)
+                    }
                 )
             }
         }

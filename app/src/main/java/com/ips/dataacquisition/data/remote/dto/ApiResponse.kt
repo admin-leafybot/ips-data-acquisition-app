@@ -37,7 +37,10 @@ data class ButtonPressRequest(
     val action: String,
     
     @SerializedName("Timestamp")
-    val timestamp: Long
+    val timestamp: Long,
+    
+    @SerializedName("FloorIndex")
+    val floorIndex: Int? = null
 )
 
 data class IMUDataUploadRequest(

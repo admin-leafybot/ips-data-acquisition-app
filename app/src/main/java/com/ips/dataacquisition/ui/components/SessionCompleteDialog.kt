@@ -13,9 +13,11 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.ips.dataacquisition.R
 
 @Composable
 fun SessionCompleteDialog(
@@ -60,7 +62,7 @@ fun SessionCompleteDialog(
                 
                 // Success message
                 Text(
-                    text = "Session Complete!",
+                    text = stringResource(R.string.session_complete_title),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -68,7 +70,7 @@ fun SessionCompleteDialog(
                 )
                 
                 Text(
-                    text = "You have successfully completed the data collection session.",
+                    text = stringResource(R.string.session_complete_message),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
                     textAlign = TextAlign.Center
@@ -86,7 +88,7 @@ fun SessionCompleteDialog(
                 )
                 
                 Text(
-                    text = "Auto-closing in 3 seconds...",
+                    text = stringResource(R.string.auto_closing),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
                 )

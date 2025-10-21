@@ -41,6 +41,9 @@ class ViewModelFactory(private val context: Context) : ViewModelProvider.Factory
                 )
                 BonusViewModel(bonusRepository) as T
             }
+            modelClass.isAssignableFrom(SettingsViewModel::class.java) -> {
+                SettingsViewModel(context, preferencesManager) as T
+            }
             else -> throw IllegalArgumentException("Unknown ViewModel class")
         }
     }

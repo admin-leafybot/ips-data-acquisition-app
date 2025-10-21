@@ -11,8 +11,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.ips.dataacquisition.R
 import com.ips.dataacquisition.data.model.PaymentStatus
 import com.ips.dataacquisition.data.model.Session
 import com.ips.dataacquisition.data.model.SessionStatus
@@ -61,14 +63,14 @@ fun PaymentStatusScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Text(
-                            text = "No sessions yet",
+                            text = stringResource(R.string.no_sessions_yet),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Button(onClick = onRefresh) {
                             Icon(Icons.Default.Refresh, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Refresh")
+                            Text(stringResource(R.string.refresh))
                         }
                     }
                 }
@@ -144,7 +146,7 @@ private fun SessionCard(session: Session) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Payment:",
+                    text = stringResource(R.string.payment_label),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -160,7 +162,7 @@ private fun SessionCard(session: Session) {
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "Bonus:",
+                        text = stringResource(R.string.bonus_label),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -183,7 +185,7 @@ private fun SessionCard(session: Session) {
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(
-                            text = "Remarks:",
+                            text = stringResource(R.string.remarks_label),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onErrorContainer
@@ -203,16 +205,22 @@ private fun SessionCard(session: Session) {
 
 @Composable
 private fun StatusChip(status: SessionStatus) {
-    val (text, color) = when (status) {
-        SessionStatus.APPROVED -> "Approved" to MaterialTheme.colorScheme.primary
-        SessionStatus.REJECTED -> "Rejected" to MaterialTheme.colorScheme.error
-        SessionStatus.COMPLETED -> "Pending" to MaterialTheme.colorScheme.tertiary
-        SessionStatus.IN_PROGRESS -> "In Progress" to MaterialTheme.colorScheme.secondary
+    val textRes = when (status) {
+        SessionStatus.APPROVED -> R.string.status_approved
+        SessionStatus.REJECTED -> R.string.status_rejected
+        SessionStatus.COMPLETED -> R.string.status_pending
+        SessionStatus.IN_PROGRESS -> R.string.status_in_progress
+    }
+    val color = when (status) {
+        SessionStatus.APPROVED -> MaterialTheme.colorScheme.primary
+        SessionStatus.REJECTED -> MaterialTheme.colorScheme.error
+        SessionStatus.COMPLETED -> MaterialTheme.colorScheme.tertiary
+        SessionStatus.IN_PROGRESS -> MaterialTheme.colorScheme.secondary
     }
     
     AssistChip(
         onClick = { },
-        label = { Text(text, style = MaterialTheme.typography.labelSmall) },
+        label = { Text(stringResource(textRes), style = MaterialTheme.typography.labelSmall) },
         leadingIcon = {
             Icon(
                 imageVector = if (status == SessionStatus.APPROVED) 
@@ -235,14 +243,18 @@ private fun StatusChip(status: SessionStatus) {
 
 @Composable
 private fun PaymentStatusChip(paymentStatus: PaymentStatus) {
-    val (text, color) = when (paymentStatus) {
-        PaymentStatus.PAID -> "Paid" to MaterialTheme.colorScheme.primary
-        PaymentStatus.UNPAID -> "Unpaid" to MaterialTheme.colorScheme.outline
+    val textRes = when (paymentStatus) {
+        PaymentStatus.PAID -> R.string.payment_paid
+        PaymentStatus.UNPAID -> R.string.payment_unpaid
+    }
+    val color = when (paymentStatus) {
+        PaymentStatus.PAID -> MaterialTheme.colorScheme.primary
+        PaymentStatus.UNPAID -> MaterialTheme.colorScheme.outline
     }
     
     AssistChip(
         onClick = { },
-        label = { Text(text, style = MaterialTheme.typography.labelSmall) },
+        label = { Text(stringResource(textRes), style = MaterialTheme.typography.labelSmall) },
         colors = AssistChipDefaults.assistChipColors(
             containerColor = color.copy(alpha = 0.2f),
             labelColor = color

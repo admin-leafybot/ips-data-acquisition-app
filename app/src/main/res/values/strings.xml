@@ -6,37 +6,96 @@
     <string name="tab_home">Home</string>
     <string name="tab_payment_status">Payment Status</string>
     <string name="tab_bonus">Bonus</string>
+    <string name="tab_settings">Settings</string>
     
-    <!-- Button Labels -->
-    <string name="btn_entered_restaurant_building">Entered Restaurant Building</string>
+    <!-- Home Screen - Online/Offline -->
+    <string name="online_status">You are ONLINE</string>
+    <string name="offline_status">You are OFFLINE</string>
+    <string name="online_description">Collecting data when you walk/stand</string>
+    <string name="offline_description">No data collection - tap to go online</string>
+    
+    <!-- Home Screen - Sensors Status -->
+    <string name="sensors_status_title">📡 Sensors Status</string>
+    <string name="status_running">RUNNING</string>
+    <string name="status_idle">IDLE</string>
+    <string name="status_stopped">STOPPED</string>
+    <string name="status_running_desc">Capturing &amp; syncing data (&lt;10 km/h)</string>
+    <string name="status_idle_desc">GPS monitoring (speed &gt;15 km/h)</string>
+    <string name="status_stopped_desc">User offline - no data collection</string>
+    <string name="pending_sync">%d records pending sync</string>
+    <string name="all_synced">All data synced ✓</string>
+    
+    <!-- Home Screen - Session Info -->
+    <string name="active_session">Active Session</string>
+    <string name="no_active_session">No Active Session</string>
+    <string name="session_started">Started: %s</string>
+    <string name="steps_completed">Steps Completed: %d</string>
+    <string name="recent_steps">Recent Steps:</string>
+    
+    <!-- Home Screen - Actions -->
+    <string name="available_actions">Available Actions</string>
+    
+    <!-- Button Actions -->
     <string name="btn_entered_elevator">Entered Elevator</string>
-    <string name="btn_climbing_stairs_3_floors">Climbing Stairs 3 floors</string>
-    <string name="btn_going_up_8_floors_in_lift">Going up 8 floors in Lift</string>
-    <string name="btn_reached_restaurant_corridor">Reached Restaurant Corridor</string>
-    <string name="btn_reached_restaurant">Reached Restaurant</string>
-    <string name="btn_left_restaurant">Left Restaurant</string>
-    <string name="btn_coming_down_3_floors">Coming Down 3 floors</string>
+    <string name="btn_climbing_stairs">Climbing Stairs</string>
+    <string name="btn_going_up_in_lift">Going up in Lift</string>
+    <string name="btn_coming_down_stairs">Coming Down Stairs</string>
     <string name="btn_left_restaurant_building">Left Restaurant Building</string>
     <string name="btn_entered_delivery_building">Entered Delivery Building</string>
     <string name="btn_reached_delivery_corridor">Reached Delivery Corridor</string>
     <string name="btn_reached_doorstep">Reached Doorstep</string>
     <string name="btn_left_doorstep">Left Doorstep</string>
-    <string name="btn_going_down_8_floors_in_lift">Going down 8 floors in Lift</string>
+    <string name="btn_going_down_in_lift">Going down in Lift</string>
     <string name="btn_left_delivery_building">Left Delivery Building</string>
     
-    <!-- Session Info -->
-    <string name="session_info">Session Information</string>
-    <string name="current_session">Current Session</string>
-    <string name="no_active_session">No Active Session</string>
-    <string name="session_started">Session started at %s</string>
-    <string name="steps_completed">Steps Completed: %d</string>
+    <!-- Floor Selection Dialog -->
+    <string name="select_floor">Select Floor Number</string>
+    <string name="floor_for">For: %s</string>
+    <string name="floor_number">Floor Number</string>
+    <string name="basement_floor">B%d</string>
+    <string name="ground_floor">Ground (0)</string>
+    <string name="floor">Floor %d</string>
+    <string name="confirm">Confirm</string>
+    <string name="cancel">Cancel</string>
     
-    <!-- Payment Status -->
+    <!-- Session Complete Dialog -->
+    <string name="session_complete_title">Session Complete!</string>
+    <string name="session_complete_message">You have successfully completed the data collection session.</string>
+    <string name="auto_closing">Auto-closing in 3 seconds…</string>
+    
+    <!-- Payment Status Screen -->
+    <string name="no_sessions_yet">No sessions yet</string>
+    <string name="refresh">Refresh</string>
+    <string name="session_id">Session %s</string>
+    <string name="payment_label">Payment:</string>
+    <string name="bonus_label">Bonus:</string>
+    <string name="remarks_label">Remarks:</string>
+    
+    <!-- Status Labels -->
     <string name="status_approved">Approved</string>
     <string name="status_rejected">Rejected</string>
+    <string name="status_pending">Pending</string>
+    <string name="status_in_progress">In Progress</string>
     <string name="payment_paid">Paid</string>
     <string name="payment_unpaid">Unpaid</string>
-    <string name="remarks">Remarks: %s</string>
+    
+    <!-- Bonus Screen -->
+    <string name="total_bonus">Total Bonus</string>
+    <string name="no_bonuses_yet">No bonuses yet</string>
+    <string name="session">Session:</string>
+    <string name="amount">Amount:</string>
+    <string name="earned_on">Earned on %s</string>
+    
+    <!-- Settings Screen -->
+    <string name="settings_title">Settings</string>
+    <string name="language_setting">Language</string>
+    <string name="select_language">Select Language</string>
+    <string name="english">English</string>
+    <string name="hindi">हिंदी (Hindi)</string>
+    
+    <!-- Errors -->
+    <string name="error_offline">Please go ONLINE to record data</string>
+    <string name="dismiss">Dismiss</string>
     
     <!-- Notifications -->
     <string name="notification_channel_imu">IMU Data Collection</string>
@@ -45,14 +104,4 @@
     <string name="notification_imu_text">Recording sensor data in background</string>
     <string name="notification_sync_title">Syncing Data</string>
     <string name="notification_sync_text">Uploading data to server</string>
-    
-    <!-- Permissions -->
-    <string name="permission_location_rationale">Location permission is required to collect GPS data for the indoor positioning system.</string>
-    <string name="permission_background_location_rationale">Background location permission is needed to collect data even when the app is not in use.</string>
-    <string name="permission_notification_rationale">Notification permission is required to show data collection status.</string>
-    
-    <!-- Errors -->
-    <string name="error_network">Network error. Data will be synced when connection is available.</string>
-    <string name="error_session_create">Failed to create session</string>
 </resources>
-

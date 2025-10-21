@@ -7,8 +7,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ips.dataacquisition.R
 import com.ips.dataacquisition.data.model.ButtonAction
+import com.ips.dataacquisition.data.model.localizedName
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -22,7 +25,7 @@ fun FloorSelectionDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(text = "Select Floor Number")
+            Text(text = stringResource(R.string.select_floor))
         },
         text = {
             Column(
@@ -31,7 +34,7 @@ fun FloorSelectionDialog(
                     .verticalScroll(rememberScrollState())
             ) {
                 Text(
-                    text = "For: ${action.displayName}",
+                    text = stringResource(R.string.floor_for, action.localizedName()),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -49,7 +52,7 @@ fun FloorSelectionDialog(
                         value = selectedFloor?.toString() ?: "",
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("Floor Number") },
+                        label = { Text(stringResource(R.string.floor_number)) },
                         trailingIcon = {
                             ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
                         },
@@ -66,7 +69,7 @@ fun FloorSelectionDialog(
                         // Basement floors (-2 to -1)
                         (-2..-1).forEach { floor ->
                             DropdownMenuItem(
-                                text = { Text("B${-floor}") },
+                                text = { Text(stringResource(R.string.basement_floor, -floor)) },
                                 onClick = {
                                     selectedFloor = floor
                                     expanded = false
@@ -76,7 +79,7 @@ fun FloorSelectionDialog(
                         
                         // Ground floor
                         DropdownMenuItem(
-                            text = { Text("Ground (0)") },
+                            text = { Text(stringResource(R.string.ground_floor)) },
                             onClick = {
                                 selectedFloor = 0
                                 expanded = false
@@ -86,7 +89,7 @@ fun FloorSelectionDialog(
                         // Upper floors (1 to 50)
                         (1..50).forEach { floor ->
                             DropdownMenuItem(
-                                text = { Text("Floor $floor") },
+                                text = { Text(stringResource(R.string.floor, floor)) },
                                 onClick = {
                                     selectedFloor = floor
                                     expanded = false
@@ -104,12 +107,12 @@ fun FloorSelectionDialog(
                 },
                 enabled = selectedFloor != null
             ) {
-                Text("Confirm")
+                Text(stringResource(R.string.confirm))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(stringResource(R.string.cancel))
             }
         }
     )

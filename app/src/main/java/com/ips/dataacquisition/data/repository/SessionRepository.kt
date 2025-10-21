@@ -162,12 +162,14 @@ class SessionRepository(
                     android.util.Log.d("SessionRepo", "  SessionId: ${buttonPress.sessionId}")
                     android.util.Log.d("SessionRepo", "  Action: ${buttonPress.action}")
                     android.util.Log.d("SessionRepo", "  Timestamp: ${buttonPress.timestamp}")
+                    android.util.Log.d("SessionRepo", "  FloorIndex: ${buttonPress.floorIndex}")
                     android.util.Log.d("SessionRepo", "  IsSynced: ${buttonPress.isSynced}")
                     
                     val request = ButtonPressRequest(
                         buttonPress.sessionId,
                         buttonPress.action,
-                        buttonPress.timestamp
+                        buttonPress.timestamp,
+                        buttonPress.floorIndex  // Include floor number
                     )
                     
                     // Log the JSON being sent

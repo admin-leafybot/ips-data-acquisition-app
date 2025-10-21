@@ -9,8 +9,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.ips.dataacquisition.R
 import com.ips.dataacquisition.data.model.Bonus
 import java.text.SimpleDateFormat
 import java.util.*
@@ -54,7 +56,7 @@ fun BonusScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "No bonuses yet. Complete sessions to earn bonuses!",
+                                text = stringResource(R.string.no_bonuses_yet),
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -96,7 +98,7 @@ private fun TotalBonusCard(totalBonus: Double) {
         ) {
             Column {
                 Text(
-                    text = "Total Bonus Earned",
+                    text = stringResource(R.string.total_bonus),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )

@@ -1,5 +1,9 @@
 package com.ips.dataacquisition.data.model
 
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
+import com.ips.dataacquisition.R
+
 enum class ButtonAction(val displayName: String) {
     // DISABLED: Session now starts at LEFT_RESTAURANT_BUILDING
     // ENTERED_RESTAURANT_BUILDING("Entered Restaurant Building"),
@@ -142,6 +146,25 @@ enum class ButtonAction(val displayName: String) {
             }
             */
         }
+    }
+}
+
+// Composable extension to get localized button name
+@Composable
+fun ButtonAction.localizedName(): String {
+    val context = LocalContext.current
+    return when (this) {
+        ButtonAction.ENTERED_ELEVATOR -> context.getString(R.string.btn_entered_elevator)
+        ButtonAction.CLIMBING_STAIRS -> context.getString(R.string.btn_climbing_stairs)
+        ButtonAction.GOING_UP_IN_LIFT -> context.getString(R.string.btn_going_up_in_lift)
+        ButtonAction.COMING_DOWN_STAIRS -> context.getString(R.string.btn_coming_down_stairs)
+        ButtonAction.LEFT_RESTAURANT_BUILDING -> context.getString(R.string.btn_left_restaurant_building)
+        ButtonAction.ENTERED_DELIVERY_BUILDING -> context.getString(R.string.btn_entered_delivery_building)
+        ButtonAction.REACHED_DELIVERY_CORRIDOR -> context.getString(R.string.btn_reached_delivery_corridor)
+        ButtonAction.REACHED_DOORSTEP -> context.getString(R.string.btn_reached_doorstep)
+        ButtonAction.LEFT_DOORSTEP -> context.getString(R.string.btn_left_doorstep)
+        ButtonAction.GOING_DOWN_IN_LIFT -> context.getString(R.string.btn_going_down_in_lift)
+        ButtonAction.LEFT_DELIVERY_BUILDING -> context.getString(R.string.btn_left_delivery_building)
     }
 }
 

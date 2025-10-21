@@ -9,7 +9,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import com.ips.dataacquisition.R
 import com.ips.dataacquisition.data.model.ButtonAction
+import com.ips.dataacquisition.data.model.localizedName
 import com.ips.dataacquisition.data.model.ButtonPress
 import com.ips.dataacquisition.data.model.Session
 import java.text.SimpleDateFormat
@@ -64,7 +68,7 @@ fun HomeScreen(
 
             // Available Actions
             Text(
-                text = "Available Actions",
+                text = stringResource(R.string.available_actions),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
@@ -99,7 +103,7 @@ fun HomeScreen(
                             )
                         ) {
                             Text(
-                                text = action.displayName,
+                                text = action.localizedName(),
                                 style = MaterialTheme.typography.bodyLarge
                             )
                         }
@@ -129,7 +133,7 @@ fun HomeScreen(
                             modifier = Modifier.weight(1f)
                         )
                         TextButton(onClick = onClearError) {
-                            Text("Dismiss")
+                            Text(stringResource(R.string.dismiss))
                         }
                     }
                 }
@@ -175,7 +179,7 @@ fun HomeScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (isOnline) "You are ONLINE" else "You are OFFLINE",
+                            text = stringResource(if (isOnline) R.string.online_status else R.string.offline_status),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = if (isOnline)
@@ -185,10 +189,7 @@ fun HomeScreen(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = if (isOnline)
-                                "Collecting data when you walk/stand"
-                            else
-                                "No data collection - tap to go online",
+                            text = stringResource(if (isOnline) R.string.online_description else R.string.offline_description),
                             style = MaterialTheme.typography.bodySmall,
                             color = if (isOnline)
                                 MaterialTheme.colorScheme.onPrimaryContainer
@@ -253,7 +254,7 @@ fun HomeScreen(
                 ) {
                     // Header
                     Text(
-                        text = "📡 Sensors Status",
+                        text = stringResource(R.string.sensors_status_title),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = when (sensorStatus) {
@@ -268,7 +269,12 @@ fun HomeScreen(
 
                     // Status Badge
                     Text(
-                        text = sensorStatus,
+                        text = stringResource(when (sensorStatus) {
+                            "RUNNING" -> R.string.status_running
+                            "IDLE" -> R.string.status_idle
+                            "STOPPED" -> R.string.status_stopped
+                            else -> R.string.status_idle
+                        }),
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = statusColor
@@ -278,12 +284,12 @@ fun HomeScreen(
 
                     // Status Description
                     Text(
-                        text = when (sensorStatus) {
-                            "RUNNING" -> "Capturing & syncing data (<10 km/h)"
-                            "IDLE" -> "GPS monitoring (speed >15 km/h)"
-                            "STOPPED" -> "User offline - no data collection"
-                            else -> ""
-                        },
+                        text = stringResource(when (sensorStatus) {
+                            "RUNNING" -> R.string.status_running_desc
+                            "IDLE" -> R.string.status_idle_desc
+                            "STOPPED" -> R.string.status_stopped_desc
+                            else -> R.string.status_idle_desc
+                        }),
                         style = MaterialTheme.typography.bodySmall,
                         color = when (sensorStatus) {
                             "RUNNING" -> MaterialTheme.colorScheme.onPrimaryContainer
@@ -298,9 +304,9 @@ fun HomeScreen(
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = if (pendingSyncCount > 0) {
-                                "$pendingSyncCount records pending sync"
+                                stringResource(R.string.pending_sync, pendingSyncCount)
                             } else {
-                                "All data synced ✓"
+                                stringResource(R.string.all_synced)
                             },
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold,
@@ -329,7 +335,7 @@ fun HomeScreen(
                     modifier = Modifier.padding(16.dp)
                 ) {
                     Text(
-                        text = if (activeSession != null) "Active Session" else "No Active Session",
+                        text = stringResource(if (activeSession != null) R.string.active_session else R.string.no_active_session),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = if (activeSession != null)
@@ -344,7 +350,7 @@ fun HomeScreen(
                         val formatter =
                             SimpleDateFormat("MMM dd, yyyy HH:mm:ss", Locale.getDefault())
                         Text(
-                            text = "Started: ${formatter.format(Date(activeSession.startTimestamp))}",
+                            text = stringResource(R.string.session_started, formatter.format(Date(activeSession.startTimestamp))),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
@@ -352,7 +358,7 @@ fun HomeScreen(
                         Spacer(modifier = Modifier.height(4.dp))
 
                         Text(
-                            text = "Steps Completed: ${buttonPresses.size}",
+                            text = stringResource(R.string.steps_completed, buttonPresses.size),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -364,7 +370,7 @@ fun HomeScreen(
                             Spacer(modifier = Modifier.height(8.dp))
 
                             Text(
-                                text = "Recent Steps:",
+                                text = stringResource(R.string.recent_steps),
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -380,7 +386,7 @@ fun HomeScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text(
-                                        text = "• ${ButtonAction.valueOf(press.action).displayName}",
+                                        text = "• ${ButtonAction.valueOf(press.action).localizedName()}",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                                         modifier = Modifier.weight(1f)

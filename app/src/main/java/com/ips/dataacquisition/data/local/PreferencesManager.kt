@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -20,6 +21,7 @@ class PreferencesManager(private val context: Context) {
         private val LAST_ACTIVITY_KEY = longPreferencesKey("last_activity_timestamp")
         private val IS_COLLECTING_KEY = booleanPreferencesKey("is_collecting_data")
         private val SAMPLES_COLLECTED_KEY = longPreferencesKey("samples_collected")
+        private val LANGUAGE_KEY = stringPreferencesKey("app_language")
         private const val AUTO_OFFLINE_TIMEOUT_MS = 2 * 60 * 60 * 1000L // 2 hours
     }
     
@@ -93,6 +95,18 @@ class PreferencesManager(private val context: Context) {
     suspend fun resetSamplesCollected() {
         context.dataStore.edit { preferences ->
             preferences[SAMPLES_COLLECTED_KEY] = 0L
+        }
+    }
+    
+    // Language preference
+    fun getLanguage(): Flow<String> = context.dataStore.data
+        .map { preferences ->
+            preferences[LANGUAGE_KEY] ?: "en"  // Default to English
+        }
+    
+    suspend fun setLanguage(languageCode: String) {
+        context.dataStore.edit { preferences ->
+            preferences[LANGUAGE_KEY] = languageCode
         }
     }
 }

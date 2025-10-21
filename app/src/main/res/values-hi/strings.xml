@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">IPS डेटा संग्रहण</string>
+    
+    <!-- Tab Names -->
+    <string name="tab_home">होम</string>
+    <string name="tab_payment_status">भुगतान स्थिति</string>
+    <string name="tab_bonus">बोनस</string>
+    <string name="tab_settings">सेटिंग्स</string>
+    
+    <!-- Home Screen - Online/Offline -->
+    <string name="online_status">आप ऑनलाइन हैं</string>
+    <string name="offline_status">आप ऑफ़लाइन हैं</string>
+    <string name="online_description">जब आप चलते/खड़े होते हैं तो डेटा एकत्र कर रहे हैं</string>
+    <string name="offline_description">कोई डेटा संग्रह नहीं - ऑनलाइन जाने के लिए टैप करें</string>
+    
+    <!-- Home Screen - Sensors Status -->
+    <string name="sensors_status_title">📡 सेंसर स्थिति</string>
+    <string name="status_running">चल रहा है</string>
+    <string name="status_idle">निष्क्रिय</string>
+    <string name="status_stopped">बंद</string>
+    <string name="status_running_desc">डेटा कैप्चर और सिंक हो रहा है (&lt;10 km/h)</string>
+    <string name="status_idle_desc">GPS निगरानी (गति &gt;15 km/h)</string>
+    <string name="status_stopped_desc">उपयोगकर्ता ऑफ़लाइन - कोई डेटा संग्रह नहीं</string>
+    <string name="pending_sync">%d रिकॉर्ड सिंक होने बाकी हैं</string>
+    <string name="all_synced">सभी डेटा सिंक हो गया ✓</string>
+    
+    <!-- Home Screen - Session Info -->
+    <string name="active_session">सक्रिय सत्र</string>
+    <string name="no_active_session">कोई सक्रिय सत्र नहीं</string>
+    <string name="session_started">शुरू किया: %s</string>
+    <string name="steps_completed">पूर्ण चरण: %d</string>
+    <string name="recent_steps">हाल के चरण:</string>
+    
+    <!-- Home Screen - Actions -->
+    <string name="available_actions">उपलब्ध क्रियाएं</string>
+    
+    <!-- Button Actions -->
+    <string name="btn_entered_elevator">लिफ्ट में प्रवेश किया</string>
+    <string name="btn_climbing_stairs">सीढ़ियाँ चढ़ना</string>
+    <string name="btn_going_up_in_lift">लिफ्ट में ऊपर जा रहे हैं</string>
+    <string name="btn_coming_down_stairs">सीढ़ियों से नीचे आना</string>
+    <string name="btn_left_restaurant_building">रेस्तरां बिल्डिंग छोड़ दी</string>
+    <string name="btn_entered_delivery_building">डिलीवरी बिल्डिंग में प्रवेश किया</string>
+    <string name="btn_reached_delivery_corridor">डिलीवरी कॉरिडोर पहुंचे</string>
+    <string name="btn_reached_doorstep">दरवाजे पर पहुंचे</string>
+    <string name="btn_left_doorstep">दरवाजा छोड़ दिया</string>
+    <string name="btn_going_down_in_lift">लिफ्ट में नीचे जा रहे हैं</string>
+    <string name="btn_left_delivery_building">डिलीवरी बिल्डिंग छोड़ दी</string>
+    
+    <!-- Floor Selection Dialog -->
+    <string name="select_floor">मंजिल संख्या चुनें</string>
+    <string name="floor_for">के लिए: %s</string>
+    <string name="floor_number">मंजिल संख्या</string>
+    <string name="basement_floor">तहखाना %d</string>
+    <string name="ground_floor">भूतल (0)</string>
+    <string name="floor">मंजिल %d</string>
+    <string name="confirm">पुष्टि करें</string>
+    <string name="cancel">रद्द करें</string>
+    
+    <!-- Session Complete Dialog -->
+    <string name="session_complete_title">सत्र पूरा हुआ!</string>
+    <string name="session_complete_message">आपने डेटा संग्रह सत्र सफलतापूर्वक पूरा कर लिया है।</string>
+    <string name="auto_closing">3 सेकंड में स्वतः बंद हो रहा है…</string>
+    
+    <!-- Payment Status Screen -->
+    <string name="no_sessions_yet">अभी तक कोई सत्र नहीं</string>
+    <string name="refresh">रीफ्रेश करें</string>
+    <string name="session_id">सत्र %s</string>
+    <string name="payment_label">भुगतान:</string>
+    <string name="bonus_label">बोनस:</string>
+    <string name="remarks_label">टिप्पणी:</string>
+    
+    <!-- Status Labels -->
+    <string name="status_approved">स्वीकृत</string>
+    <string name="status_rejected">अस्वीकृत</string>
+    <string name="status_pending">लंबित</string>
+    <string name="status_in_progress">प्रगति में</string>
+    <string name="payment_paid">भुगतान किया गया</string>
+    <string name="payment_unpaid">भुगतान नहीं किया गया</string>
+    
+    <!-- Bonus Screen -->
+    <string name="total_bonus">कुल बोनस</string>
+    <string name="no_bonuses_yet">अभी तक कोई बोनस नहीं</string>
+    <string name="session">सत्र:</string>
+    <string name="amount">राशि:</string>
+    <string name="earned_on">%s को अर्जित किया</string>
+    
+    <!-- Settings Screen -->
+    <string name="settings_title">सेटिंग्स</string>
+    <string name="language_setting">भाषा</string>
+    <string name="select_language">भाषा चुनें</string>
+    <string name="english">English</string>
+    <string name="hindi">हिंदी</string>
+    
+    <!-- Errors -->
+    <string name="error_offline">डेटा रिकॉर्ड करने के लिए कृपया ऑनलाइन जाएं</string>
+    <string name="dismiss">खारिज करें</string>
+    
+    <!-- Notifications -->
+    <string name="notification_channel_imu">IMU डेटा संग्रहण</string>
+    <string name="notification_channel_sync">डेटा सिंक</string>
+    <string name="notification_imu_title">IMU डेटा एकत्र कर रहा है</string>
+    <string name="notification_imu_text">पृष्ठभूमि में सेंसर डेटा रिकॉर्ड कर रहा है</string>
+    <string name="notification_sync_title">डेटा सिंक हो रहा है</string>
+    <string name="notification_sync_text">सर्वर पर डेटा अपलोड हो रहा है</string>
+</resources>
+
