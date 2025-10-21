@@ -19,7 +19,7 @@ import com.google.android.gms.location.*
 import com.ips.dataacquisition.R
 import com.ips.dataacquisition.data.local.AppDatabase
 import com.ips.dataacquisition.data.model.IMUData
-import com.ips.dataacquisition.data.remote.RetrofitClient
+import com.ips.dataacquisition.data.remote.RetrofitClientFactory
 import com.ips.dataacquisition.data.repository.IMURepository
 import com.ips.dataacquisition.data.repository.SessionRepository
 import kotlinx.coroutines.*
@@ -126,11 +126,11 @@ class IMUDataService : Service(), SensorEventListener {
         sessionRepository = SessionRepository(
             database.sessionDao(),
             database.buttonPressDao(),
-            RetrofitClient.apiService
+            RetrofitClientFactory.apiService
         )
         imuRepository = IMURepository(
             database.imuDataDao(),
-            RetrofitClient.apiService
+            RetrofitClientFactory.apiService
         )
         preferencesManager = com.ips.dataacquisition.data.local.PreferencesManager(applicationContext)
         

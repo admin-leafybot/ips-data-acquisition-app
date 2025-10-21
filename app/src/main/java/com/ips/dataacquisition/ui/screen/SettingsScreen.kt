@@ -13,7 +13,9 @@ import com.ips.dataacquisition.R
 @Composable
 fun SettingsScreen(
     currentLanguage: String,
-    onLanguageChange: (String) -> Unit
+    userName: String?,
+    onLanguageChange: (String) -> Unit,
+    onLogout: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -27,6 +29,51 @@ fun SettingsScreen(
         )
         
         Spacer(modifier = Modifier.height(24.dp))
+        
+        // User Info Card
+        if (userName != null) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.user_info),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    Text(
+                        text = stringResource(R.string.logged_in_as, userName),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Button(
+                        onClick = onLogout,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Text(stringResource(R.string.logout))
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+        }
         
         // Language Selection Card
         Card(

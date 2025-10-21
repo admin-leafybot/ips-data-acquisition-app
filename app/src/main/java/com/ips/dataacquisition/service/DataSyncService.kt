@@ -13,7 +13,7 @@ import androidx.core.app.NotificationCompat
 import com.ips.dataacquisition.R
 import com.ips.dataacquisition.data.local.AppDatabase
 import com.ips.dataacquisition.data.local.PreferencesManager
-import com.ips.dataacquisition.data.remote.RetrofitClient
+import com.ips.dataacquisition.data.remote.RetrofitClientFactory
 import com.ips.dataacquisition.data.repository.IMURepository
 import com.ips.dataacquisition.data.repository.SessionRepository
 import kotlinx.coroutines.*
@@ -69,11 +69,11 @@ class DataSyncService : Service() {
         sessionRepository = SessionRepository(
             database.sessionDao(),
             database.buttonPressDao(),
-            RetrofitClient.apiService
+            RetrofitClientFactory.apiService
         )
         imuRepository = IMURepository(
             database.imuDataDao(),
-            RetrofitClient.apiService
+            RetrofitClientFactory.apiService
         )
         
         preferencesManager = PreferencesManager(applicationContext)

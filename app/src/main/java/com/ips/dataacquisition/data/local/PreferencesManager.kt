@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.ips.dataacquisition.data.model.User
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -22,6 +23,15 @@ class PreferencesManager(private val context: Context) {
         private val IS_COLLECTING_KEY = booleanPreferencesKey("is_collecting_data")
         private val SAMPLES_COLLECTED_KEY = longPreferencesKey("samples_collected")
         private val LANGUAGE_KEY = stringPreferencesKey("app_language")
+        
+        // Auth keys
+        private val USER_ID_KEY = stringPreferencesKey("user_id")
+        private val USER_PHONE_KEY = stringPreferencesKey("user_phone")
+        private val USER_FULL_NAME_KEY = stringPreferencesKey("user_full_name")
+        private val AUTH_TOKEN_KEY = stringPreferencesKey("auth_token")
+        private val REFRESH_TOKEN_KEY = stringPreferencesKey("refresh_token")
+        private val TOKEN_EXPIRES_AT_KEY = longPreferencesKey("token_expires_at")
+        
         private const val AUTO_OFFLINE_TIMEOUT_MS = 2 * 60 * 60 * 1000L // 2 hours
     }
     
@@ -108,5 +118,49 @@ class PreferencesManager(private val context: Context) {
         context.dataStore.edit { preferences ->
             preferences[LANGUAGE_KEY] = languageCode
         }
+    }
+    
+    // Auth / User management
+    fun getUser(): Flow<User?> = context.dataStore.data
+        .map { preferences ->
+            val userId = preferences[USER_ID_KEY]
+            val phone = preferences[USER_PHONE_KEY]
+            val fullName = preferences[USER_FULL_NAME_KEY]
+            val token = preferences[AUTH_TOKEN_KEY]
+            val refreshToken = preferences[REFRESH_TOKEN_KEY]
+            val expiresAt = preferences[TOKEN_EXPIRES_AT_KEY]
+            
+            if (userId != null && phone != null && fullName != null && 
+                token != null && refreshToken != null && expiresAt != null) {
+                User(userId, phone, fullName, token, refreshToken, expiresAt)
+            } else {
+                null
+            }
+        }
+    
+    suspend fun saveUser(user: User) {
+        context.dataStore.edit { preferences ->
+            preferences[USER_ID_KEY] = user.userId
+            preferences[USER_PHONE_KEY] = user.phone
+            preferences[USER_FULL_NAME_KEY] = user.fullName
+            preferences[AUTH_TOKEN_KEY] = user.token
+            preferences[REFRESH_TOKEN_KEY] = user.refreshToken
+            preferences[TOKEN_EXPIRES_AT_KEY] = user.tokenExpiresAt
+        }
+    }
+    
+    suspend fun clearUser() {
+        context.dataStore.edit { preferences ->
+            preferences.remove(USER_ID_KEY)
+            preferences.remove(USER_PHONE_KEY)
+            preferences.remove(USER_FULL_NAME_KEY)
+            preferences.remove(AUTH_TOKEN_KEY)
+            preferences.remove(REFRESH_TOKEN_KEY)
+            preferences.remove(TOKEN_EXPIRES_AT_KEY)
+        }
+    }
+    
+    suspend fun getAuthToken(): String? {
+        return context.dataStore.data.map { it[AUTH_TOKEN_KEY] }.first()
     }
 }

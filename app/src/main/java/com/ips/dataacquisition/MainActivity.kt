@@ -9,6 +9,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AttachMoney
@@ -17,8 +22,10 @@ import androidx.compose.material.icons.filled.Payment
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -33,14 +40,19 @@ import com.ips.dataacquisition.service.IMUDataService
 import kotlinx.coroutines.launch
 import com.ips.dataacquisition.ui.screen.BonusScreen
 import com.ips.dataacquisition.ui.screen.HomeScreen
+import com.ips.dataacquisition.ui.screen.LoginScreen
 import com.ips.dataacquisition.ui.screen.PaymentStatusScreen
 import com.ips.dataacquisition.ui.screen.SettingsScreen
+import com.ips.dataacquisition.ui.screen.SignupScreen
 import com.ips.dataacquisition.ui.theme.IPSDataAcquisitionTheme
+import com.ips.dataacquisition.ui.viewmodel.AppVersionViewModel
+import com.ips.dataacquisition.ui.viewmodel.AuthViewModel
 import com.ips.dataacquisition.ui.viewmodel.BonusViewModel
 import com.ips.dataacquisition.ui.viewmodel.HomeViewModel
 import com.ips.dataacquisition.ui.viewmodel.PaymentStatusViewModel
 import com.ips.dataacquisition.ui.viewmodel.SettingsViewModel
 import com.ips.dataacquisition.ui.viewmodel.ViewModelFactory
+import com.ips.dataacquisition.ui.screen.UnsupportedVersionScreen
 
 class MainActivity : ComponentActivity() {
     
@@ -48,6 +60,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var paymentViewModel: PaymentStatusViewModel
     private lateinit var bonusViewModel: BonusViewModel
     private lateinit var settingsViewModel: SettingsViewModel
+    private lateinit var authViewModel: AuthViewModel
+    private lateinit var appVersionViewModel: AppVersionViewModel
     private lateinit var preferencesManager: PreferencesManager
     
     private val permissionLauncher = registerForActivityResult(
@@ -78,28 +92,71 @@ class MainActivity : ComponentActivity() {
         paymentViewModel = ViewModelProvider(this, factory)[PaymentStatusViewModel::class.java]
         bonusViewModel = ViewModelProvider(this, factory)[BonusViewModel::class.java]
         settingsViewModel = ViewModelProvider(this, factory)[SettingsViewModel::class.java]
+        authViewModel = ViewModelProvider(this, factory)[AuthViewModel::class.java]
+        appVersionViewModel = ViewModelProvider(this, factory)[AppVersionViewModel::class.java]
         
-        android.util.Log.d("MainActivity", "ViewModels created, requesting permissions...")
+        android.util.Log.d("MainActivity", "ViewModels created")
         
-        // Observe online state to control services
-        observeOnlineStateForServices()
+        // Check app version before proceeding
+        val versionName = getAppVersion()
+        android.util.Log.d("MainActivity", "Checking app version: $versionName")
+        appVersionViewModel.checkAppVersion(versionName)
         
         // Observe language changes to recreate activity
         observeLanguageChanges()
         
         setContent {
             IPSDataAcquisitionTheme {
-                MainScreen(
-                    homeViewModel = homeViewModel,
-                    paymentViewModel = paymentViewModel,
-                    bonusViewModel = bonusViewModel,
-                    settingsViewModel = settingsViewModel
-                )
+                val isVersionSupported by appVersionViewModel.isVersionSupported.collectAsStateWithLifecycle()
+                val isChecking by appVersionViewModel.isChecking.collectAsStateWithLifecycle()
+                
+                // Initialize services only after version is verified as supported
+                LaunchedEffect(isVersionSupported) {
+                    if (isVersionSupported == true) {
+                        android.util.Log.d("MainActivity", "Version verified, initializing services...")
+                        observeOnlineStateForServices()
+                        requestPermissions()
+                    }
+                }
+                
+                when {
+                    // Still checking version
+                    isVersionSupported == null || isChecking -> {
+                        Surface(
+                            modifier = Modifier.fillMaxSize(),
+                            color = MaterialTheme.colorScheme.background
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    CircularProgressIndicator()
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Text(stringResource(R.string.checking_version))
+                                }
+                            }
+                        }
+                    }
+                    // Version is not supported
+                    isVersionSupported == false -> {
+                        UnsupportedVersionScreen()
+                    }
+                    // Version is supported - show main app
+                    else -> {
+                        MainScreen(
+                            homeViewModel = homeViewModel,
+                            paymentViewModel = paymentViewModel,
+                            bonusViewModel = bonusViewModel,
+                            settingsViewModel = settingsViewModel,
+                            authViewModel = authViewModel
+                        )
+                    }
+                }
             }
         }
-        
-        // Request permissions after UI is set up
-        requestPermissions()
     }
     
     private fun requestPermissions() {
@@ -245,6 +302,16 @@ class MainActivity : ComponentActivity() {
         createConfigurationContext(config)
         resources.updateConfiguration(config, resources.displayMetrics)
     }
+    
+    private fun getAppVersion(): String {
+        return try {
+            val packageInfo = packageManager.getPackageInfo(packageName, 0)
+            packageInfo.versionName ?: "1.0.0"
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Error getting app version", e)
+            "1.0.0"
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -253,11 +320,81 @@ fun MainScreen(
     homeViewModel: HomeViewModel,
     paymentViewModel: PaymentStatusViewModel,
     bonusViewModel: BonusViewModel,
-    settingsViewModel: SettingsViewModel
+    settingsViewModel: SettingsViewModel,
+    authViewModel: AuthViewModel
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    
+    // Check authentication
+    val isAuthenticated by authViewModel.isAuthenticated.collectAsStateWithLifecycle()
+    val authLoading by authViewModel.isLoading.collectAsStateWithLifecycle()
+    val authError by authViewModel.errorMessage.collectAsStateWithLifecycle()
+    
+    // If not authenticated, show login screen
+    if (!isAuthenticated) {
+        val currentLanguage by settingsViewModel.currentLanguage.collectAsStateWithLifecycle()
+        val signupSuccess by authViewModel.signupSuccess.collectAsStateWithLifecycle()
+        val signupSuccessMessage by authViewModel.signupSuccessMessage.collectAsStateWithLifecycle()
+        
+        // Navigate to login after successful signup
+        LaunchedEffect(signupSuccess) {
+            if (signupSuccess) {
+                navController.navigate("login") {
+                    popUpTo("login") { inclusive = true }
+                }
+            }
+        }
+        
+        NavHost(
+            navController = navController,
+            startDestination = "login"
+        ) {
+            composable("login") {
+                // Show signup success message on login screen if just signed up
+                val displayMessage = signupSuccessMessage ?: authError
+                
+                // Clear signup success when showing on login screen
+                LaunchedEffect(signupSuccessMessage) {
+                    if (signupSuccessMessage != null) {
+                        kotlinx.coroutines.delay(100)  // Small delay to ensure message is displayed
+                    }
+                }
+                
+                LoginScreen(
+                    isLoading = authLoading,
+                    errorMessage = displayMessage,
+                    currentLanguage = currentLanguage,
+                    onLogin = { phone, password -> 
+                        authViewModel.clearSignupSuccess()
+                        authViewModel.login(phone, password) 
+                    },
+                    onNavigateToSignup = { navController.navigate("signup") },
+                    onLanguageChange = { languageCode -> settingsViewModel.changeLanguage(languageCode) },
+                    onClearError = { 
+                        authViewModel.clearError()
+                        authViewModel.clearSignupSuccess()
+                    }
+                )
+            }
+            
+            composable("signup") {
+                SignupScreen(
+                    isLoading = authLoading,
+                    errorMessage = authError,
+                    currentLanguage = currentLanguage,
+                    onSignup = { phone, password, fullName -> authViewModel.signup(phone, password, fullName) },
+                    onNavigateBack = { navController.popBackStack() },
+                    onLanguageChange = { languageCode -> settingsViewModel.changeLanguage(languageCode) },
+                    onClearError = { authViewModel.clearError() }
+                )
+            }
+        }
+        return
+    }
+    
+    // Authenticated - show main app
     
     Scaffold(
         bottomBar = {
@@ -282,16 +419,17 @@ fun MainScreen(
                         }
                     }
                 )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.AttachMoney, contentDescription = stringResource(R.string.tab_bonus)) },
-                    label = { Text(stringResource(R.string.tab_bonus)) },
-                    selected = currentRoute == "bonus",
-                    onClick = {
-                        navController.navigate("bonus") {
-                            popUpTo("home")
-                        }
-                    }
-                )
+                // Bonus tab - hidden for now
+                // NavigationBarItem(
+                //     icon = { Icon(Icons.Default.AttachMoney, contentDescription = stringResource(R.string.tab_bonus)) },
+                //     label = { Text(stringResource(R.string.tab_bonus)) },
+                //     selected = currentRoute == "bonus",
+                //     onClick = {
+                //         navController.navigate("bonus") {
+                //             popUpTo("home")
+                //         }
+                //     }
+                // )
                 NavigationBarItem(
                     icon = { Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.tab_settings)) },
                     label = { Text(stringResource(R.string.tab_settings)) },
@@ -341,7 +479,8 @@ fun MainScreen(
                     onFloorSelected = { floor -> homeViewModel.onFloorSelected(floor) },
                     onDismissFloorDialog = { homeViewModel.dismissFloorDialog() },
                     onToggleOnline = { homeViewModel.toggleOnlineStatus() },
-                    onClearError = { homeViewModel.clearError() }
+                    onClearError = { homeViewModel.clearError() },
+                    onCancelSession = { homeViewModel.cancelSession() }
                 )
             }
             
@@ -375,12 +514,15 @@ fun MainScreen(
             
             composable("settings") {
                 val currentLanguage by settingsViewModel.currentLanguage.collectAsStateWithLifecycle()
+                val currentUser by authViewModel.currentUser.collectAsStateWithLifecycle()
                 
                 SettingsScreen(
                     currentLanguage = currentLanguage,
+                    userName = currentUser?.fullName,
                     onLanguageChange = { languageCode ->
                         settingsViewModel.changeLanguage(languageCode)
-                    }
+                    },
+                    onLogout = { authViewModel.logout() }
                 )
             }
         }

@@ -8,7 +8,7 @@ import com.ips.dataacquisition.data.local.PreferencesManager
 import com.ips.dataacquisition.data.model.ButtonAction
 import com.ips.dataacquisition.data.model.ButtonPress
 import com.ips.dataacquisition.data.model.Session
-import com.ips.dataacquisition.data.remote.RetrofitClient
+import com.ips.dataacquisition.data.remote.RetrofitClientFactory
 import com.ips.dataacquisition.data.repository.IMURepository
 import com.ips.dataacquisition.data.repository.SessionRepository
 import kotlinx.coroutines.delay
@@ -73,7 +73,7 @@ class HomeViewModel(
         val database = AppDatabase.getDatabase(context)
         imuRepository = IMURepository(
             database.imuDataDao(),
-            RetrofitClient.apiService
+            RetrofitClientFactory.apiService
         )
         
         loadActiveSession()
@@ -344,6 +344,43 @@ class HomeViewModel(
     fun dismissFloorDialog() {
         _showFloorDialog.value = false
         _pendingAction.value = null
+    }
+    
+    fun cancelSession() {
+        viewModelScope.launch {
+            try {
+                val currentSession = _activeSession.value
+                if (currentSession != null) {
+                    _isLoading.value = true
+                    android.util.Log.d("HomeViewModel", "Cancelling session: ${currentSession.sessionId}")
+                    
+                    val result = sessionRepository.cancelSession(currentSession.sessionId)
+                    
+                    if (result.isSuccess) {
+                        android.util.Log.d("HomeViewModel", "Session cancelled successfully")
+                        
+                        // Reset state
+                        buttonPressFlowJob?.cancel()
+                        _activeSession.value = null
+                        _buttonPresses.value = emptyList()
+                        hasEnteredDeliveryBuilding = false
+                        _availableActions.value = listOf(ButtonAction.LEFT_RESTAURANT_BUILDING)  // Reset to first button
+                        
+                        _errorMessage.value = "Session cancelled successfully"
+                    } else {
+                        android.util.Log.e("HomeViewModel", "Failed to cancel session", result.exceptionOrNull())
+                        _errorMessage.value = "Failed to cancel session: ${result.exceptionOrNull()?.message}"
+                    }
+                } else {
+                    _errorMessage.value = "No active session to cancel"
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("HomeViewModel", "Error cancelling session", e)
+                _errorMessage.value = "Error: ${e.message}"
+            } finally {
+                _isLoading.value = false
+            }
+        }
     }
     
     override fun onCleared() {

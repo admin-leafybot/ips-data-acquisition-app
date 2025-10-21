@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">IPS डेटा संग्रहण</string>
+    <string name="app_name">डेटा सर्वे</string>
     
     <!-- Tab Names -->
     <string name="tab_home">होम</string>
-    <string name="tab_payment_status">भुगतान स्थिति</string>
+    <string name="tab_payment_status">सेशन्स</string>
     <string name="tab_bonus">बोनस</string>
     <string name="tab_settings">सेटिंग्स</string>
     
@@ -15,7 +15,7 @@
     <string name="offline_description">कोई डेटा संग्रह नहीं - ऑनलाइन जाने के लिए टैप करें</string>
     
     <!-- Home Screen - Sensors Status -->
-    <string name="sensors_status_title">📡 सेंसर स्थिति</string>
+    <string name="sensors_status_title">📡 डेटा स्थिति</string>
     <string name="status_running">चल रहा है</string>
     <string name="status_idle">निष्क्रिय</string>
     <string name="status_stopped">बंद</string>
@@ -63,6 +63,13 @@
     <string name="session_complete_message">आपने डेटा संग्रह सत्र सफलतापूर्वक पूरा कर लिया है।</string>
     <string name="auto_closing">3 सेकंड में स्वतः बंद हो रहा है…</string>
     
+    <!-- Cancel Session -->
+    <string name="cancel_session">सत्र रद्द करें</string>
+    <string name="cancel_session_title">सत्र रद्द करें?</string>
+    <string name="cancel_session_message">क्या आप वाकई वर्तमान सत्र को रद्द करना चाहते हैं? सारी प्रगति खो जाएगी।</string>
+    <string name="yes_cancel">हां, रद्द करें</string>
+    <string name="no_keep">नहीं, सत्र जारी रखें</string>
+    
     <!-- Payment Status Screen -->
     <string name="no_sessions_yet">अभी तक कोई सत्र नहीं</string>
     <string name="refresh">रीफ्रेश करें</string>
@@ -98,11 +105,41 @@
     <string name="dismiss">खारिज करें</string>
     
     <!-- Notifications -->
-    <string name="notification_channel_imu">IMU डेटा संग्रहण</string>
+    <string name="notification_channel_imu">डेटा संग्रहण</string>
     <string name="notification_channel_sync">डेटा सिंक</string>
-    <string name="notification_imu_title">IMU डेटा एकत्र कर रहा है</string>
-    <string name="notification_imu_text">पृष्ठभूमि में सेंसर डेटा रिकॉर्ड कर रहा है</string>
+    <string name="notification_imu_title">डेटा एकत्र कर रहा है</string>
+    <string name="notification_imu_text">पृष्ठभूमि में डेटा रिकॉर्ड कर रहा है</string>
     <string name="notification_sync_title">डेटा सिंक हो रहा है</string>
     <string name="notification_sync_text">सर्वर पर डेटा अपलोड हो रहा है</string>
+    
+    <!-- Auth / Login Screen -->
+    <string name="login_title">जारी रखने के लिए लॉगिन करें</string>
+    <string name="phone_number">फोन नंबर</string>
+    <string name="password">पासवर्ड</string>
+    <string name="login">लॉगिन</string>
+    <string name="dont_have_account">खाता नहीं है?</string>
+    <string name="sign_up">साइन अप करें</string>
+    <string name="show_password">पासवर्ड दिखाएं</string>
+    <string name="hide_password">पासवर्ड छुपाएं</string>
+    
+    <!-- Signup Screen -->
+    <string name="create_account_title">खाता बनाएं</string>
+    <string name="full_name">पूरा नाम</string>
+    <string name="password_min_chars">पासवर्ड (कम से कम 6 अक्षर)</string>
+    <string name="confirm_password">पासवर्ड की पुष्टि करें</string>
+    <string name="passwords_not_match">पासवर्ड मेल नहीं खाते</string>
+    <string name="create_account">खाता बनाएं</string>
+    <string name="signup_info">साइन अप के बाद, लॉगिन करने से पहले आपके खाते को एडमिन द्वारा सक्रिय करने की आवश्यकता होगी।</string>
+    <string name="back">वापस</string>
+    
+    <!-- Settings - Logout -->
+    <string name="logout">लॉगआउट</string>
+    <string name="logged_in_as">%s के रूप में लॉग इन</string>
+    <string name="user_info">उपयोगकर्ता जानकारी</string>
+    
+    <!-- App Version Check -->
+    <string name="version_check_title">अपडेट आवश्यक</string>
+    <string name="version_check_message">यह ऐप वर्जन समर्थित नहीं है। कृपया ऐप का नवीनतम वर्जन डाउनलोड करें।</string>
+    <string name="checking_version">ऐप वर्जन जांचा जा रहा है…</string>
 </resources>
 

@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">IPS Data Acquisition</string>
+    <string name="app_name">Data Survey</string>
     
     <!-- Tab Names -->
     <string name="tab_home">Home</string>
-    <string name="tab_payment_status">Payment Status</string>
+    <string name="tab_payment_status">Sessions</string>
     <string name="tab_bonus">Bonus</string>
     <string name="tab_settings">Settings</string>
     
@@ -15,7 +15,7 @@
     <string name="offline_description">No data collection - tap to go online</string>
     
     <!-- Home Screen - Sensors Status -->
-    <string name="sensors_status_title">📡 Sensors Status</string>
+    <string name="sensors_status_title">📡 Data Status</string>
     <string name="status_running">RUNNING</string>
     <string name="status_idle">IDLE</string>
     <string name="status_stopped">STOPPED</string>
@@ -63,6 +63,13 @@
     <string name="session_complete_message">You have successfully completed the data collection session.</string>
     <string name="auto_closing">Auto-closing in 3 seconds…</string>
     
+    <!-- Cancel Session -->
+    <string name="cancel_session">Cancel Session</string>
+    <string name="cancel_session_title">Cancel Session?</string>
+    <string name="cancel_session_message">Are you sure you want to cancel the current session? All progress will be lost.</string>
+    <string name="yes_cancel">Yes, Cancel</string>
+    <string name="no_keep">No, Keep Session</string>
+    
     <!-- Payment Status Screen -->
     <string name="no_sessions_yet">No sessions yet</string>
     <string name="refresh">Refresh</string>
@@ -98,10 +105,40 @@
     <string name="dismiss">Dismiss</string>
     
     <!-- Notifications -->
-    <string name="notification_channel_imu">IMU Data Collection</string>
+    <string name="notification_channel_imu">Data Collection</string>
     <string name="notification_channel_sync">Data Sync</string>
-    <string name="notification_imu_title">Collecting IMU Data</string>
-    <string name="notification_imu_text">Recording sensor data in background</string>
+    <string name="notification_imu_title">Collecting Data</string>
+    <string name="notification_imu_text">Recording data in background</string>
     <string name="notification_sync_title">Syncing Data</string>
     <string name="notification_sync_text">Uploading data to server</string>
+    
+    <!-- Auth / Login Screen -->
+    <string name="login_title">Login to Continue</string>
+    <string name="phone_number">Phone Number</string>
+    <string name="password">Password</string>
+    <string name="login">Login</string>
+    <string name="dont_have_account">Don\'t have an account?</string>
+    <string name="sign_up">Sign Up</string>
+    <string name="show_password">Show password</string>
+    <string name="hide_password">Hide password</string>
+    
+    <!-- Signup Screen -->
+    <string name="create_account_title">Create Account</string>
+    <string name="full_name">Full Name</string>
+    <string name="password_min_chars">Password (min 6 characters)</string>
+    <string name="confirm_password">Confirm Password</string>
+    <string name="passwords_not_match">Passwords do not match</string>
+    <string name="create_account">Create Account</string>
+    <string name="signup_info">After signup, your account will need to be activated by an admin before you can login.</string>
+    <string name="back">Back</string>
+    
+    <!-- Settings - Logout -->
+    <string name="logout">Logout</string>
+    <string name="logged_in_as">Logged in as %s</string>
+    <string name="user_info">User Information</string>
+    
+    <!-- App Version Check -->
+    <string name="version_check_title">Update Required</string>
+    <string name="version_check_message">This app version is not supported. Please download the latest version of the app.</string>
+    <string name="checking_version">Checking app version…</string>
 </resources>

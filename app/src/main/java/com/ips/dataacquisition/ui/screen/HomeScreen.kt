@@ -37,8 +37,10 @@ fun HomeScreen(
     onFloorSelected: (Int) -> Unit,
     onDismissFloorDialog: () -> Unit,
     onToggleOnline: () -> Unit,
-    onClearError: () -> Unit
+    onClearError: () -> Unit,
+    onCancelSession: () -> Unit
 ) {
+    var showCancelDialog by remember { mutableStateOf(false) }
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -62,7 +64,11 @@ fun HomeScreen(
             Spacer(modifier = Modifier.height(4.dp))
 
             // Session Info
-            SessionInfoCard(activeSession, buttonPresses)
+            SessionInfoCard(
+                activeSession = activeSession,
+                buttonPresses = buttonPresses,
+                onCancelClick = { showCancelDialog = true }
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -151,6 +157,33 @@ fun HomeScreen(
         // Session Complete Success Dialog
         if (showSuccessMessage) {
             com.ips.dataacquisition.ui.components.SessionCompleteDialog()
+        }
+        
+        // Cancel Session Confirmation Dialog
+        if (showCancelDialog) {
+            AlertDialog(
+                onDismissRequest = { showCancelDialog = false },
+                title = { Text(stringResource(R.string.cancel_session_title)) },
+                text = { Text(stringResource(R.string.cancel_session_message)) },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showCancelDialog = false
+                            onCancelSession()
+                        }
+                    ) {
+                        Text(
+                            text = stringResource(R.string.yes_cancel),
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showCancelDialog = false }) {
+                        Text(stringResource(R.string.no_keep))
+                    }
+                }
+            )
         }
     }
 }
@@ -320,7 +353,8 @@ fun HomeScreen(
         @Composable
         fun SessionInfoCard(
             activeSession: Session?,
-            buttonPresses: List<ButtonPress>
+            buttonPresses: List<ButtonPress>,
+            onCancelClick: () -> Unit
         ) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -401,6 +435,18 @@ fun HomeScreen(
                                 }
                                 Spacer(modifier = Modifier.height(2.dp))
                             }
+                        }
+                        
+                        // Cancel Session Button
+                        Spacer(modifier = Modifier.height(16.dp))
+                        OutlinedButton(
+                            onClick = onCancelClick,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Text(stringResource(R.string.cancel_session))
                         }
                     }
                 }

@@ -112,6 +112,53 @@ class SessionRepository(
         }
     }
     
+    suspend fun cancelSession(sessionId: String): Result<Unit> {
+        return try {
+            val timestamp = System.currentTimeMillis()
+            val session = sessionDao.getSessionById(sessionId)
+            
+            if (session != null) {
+                android.util.Log.d("SessionRepo", "Cancelling session: $sessionId")
+                
+                // Mark session as cancelled locally
+                val cancelledSession = session.copy(
+                    endTimestamp = timestamp,
+                    status = SessionStatus.COMPLETED,  // Or create a CANCELLED status if backend supports it
+                    isSynced = false
+                )
+                sessionDao.updateSession(cancelledSession)
+                
+                // Try to cancel on backend
+                try {
+                    val response = apiService.cancelSession(
+                        SessionUpdateRequest(sessionId, timestamp)
+                    )
+                    if (response.isSuccessful && response.body()?.success == true) {
+                        android.util.Log.d("SessionRepo", "✓ Session cancelled on backend: $sessionId")
+                        sessionDao.markSessionSynced(sessionId)
+                    } else {
+                        android.util.Log.d("SessionRepo", "Backend cancel failed, will retry in background sync")
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.d("SessionRepo", "Network error cancelling session, will retry in background sync")
+                    e.printStackTrace()
+                }
+                
+                // Clean up button presses for this cancelled session
+                kotlinx.coroutines.delay(500)
+                buttonPressDao.deleteButtonPressesBySession(sessionId)
+                android.util.Log.d("SessionRepo", "Cleaned up button presses for cancelled session: $sessionId")
+                
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("Session not found"))
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SessionRepo", "Error cancelling session", e)
+            Result.failure(e)
+        }
+    }
+    
     suspend fun recordButtonPress(sessionId: String, action: ButtonAction, floorIndex: Int? = null): Result<Unit> {
         return try {
             val timestamp = System.currentTimeMillis()

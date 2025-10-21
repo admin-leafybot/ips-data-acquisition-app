@@ -1,12 +1,37 @@
 package com.ips.dataacquisition.data.remote
 
-import com.ips.dataacquisition.data.model.Bonus
-import com.ips.dataacquisition.data.model.Session
+import com.ips.dataacquisition.data.model.*
 import com.ips.dataacquisition.data.remote.dto.*
 import retrofit2.Response
 import retrofit2.http.*
 
 interface ApiService {
+    
+    // ==================== APP VERSION CHECK ====================
+    
+    @POST("app/checkAppVersion")
+    suspend fun checkAppVersion(
+        @Body request: AppVersionRequest
+    ): Response<AppVersionResponse>
+    
+    // ==================== AUTH ENDPOINTS ====================
+    
+    @POST("user/signup")
+    suspend fun signup(
+        @Body request: SignupRequest
+    ): Response<SignupResponse>
+    
+    @POST("user/login")
+    suspend fun login(
+        @Body request: LoginRequest
+    ): Response<LoginResponse>
+    
+    @POST("user/refresh-token")
+    suspend fun refreshToken(
+        @Body request: RefreshTokenRequest
+    ): Response<RefreshTokenResponse>
+    
+    // ==================== SESSION ENDPOINTS ====================
     
     @POST("sessions/create")
     suspend fun createSession(
@@ -15,6 +40,11 @@ interface ApiService {
     
     @POST("sessions/close")
     suspend fun closeSession(
+        @Body request: SessionUpdateRequest
+    ): Response<ApiResponse<Unit>>
+    
+    @POST("sessions/cancel")
+    suspend fun cancelSession(
         @Body request: SessionUpdateRequest
     ): Response<ApiResponse<Unit>>
     
