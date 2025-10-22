@@ -7,6 +7,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
@@ -18,6 +19,35 @@ import com.ips.dataacquisition.data.model.ButtonPress
 import com.ips.dataacquisition.data.model.Session
 import java.text.SimpleDateFormat
 import java.util.*
+
+// Helper function to get button color based on action type and context
+@Composable
+fun getButtonColor(action: ButtonAction, buttonPresses: List<ButtonPress>): Color {
+    // Check if user is exiting (last action was EXITING_BUILDING)
+    val isExiting = buttonPresses.lastOrNull()?.action == ButtonAction.EXITING_BUILDING.name
+    
+    return when (action) {
+        // 🟢 Green - Session START (softer, less bright)
+        ButtonAction.LEFT_RESTAURANT_BUILDING -> Color(0xFF66BB6A)  // Lighter Green
+        
+        // 🔴 Red - EXIT/END actions (softer, less aggressive)
+        ButtonAction.EXITING_BUILDING -> Color(0xFFEF5350)  // Lighter Red
+        ButtonAction.LEFT_DELIVERY_BUILDING -> Color(0xFFEF5350)
+        ButtonAction.BACK_TO_GROUND_FLOOR -> Color(0xFFEF5350)
+        ButtonAction.LEAVING_SOCIETY -> Color(0xFFEF5350)
+        ButtonAction.LEFT_DOORSTEP -> Color(0xFFEF5350)  // Red - leaving doorstep
+        
+        // 🔴 Red - Going down when EXITING (context-aware!)
+        ButtonAction.GOING_DOWN_IN_LIFT -> if (isExiting) Color(0xFFEF5350) else Color(0xFF42A5F5)
+        ButtonAction.COMING_DOWN_STAIRS -> if (isExiting) Color(0xFFEF5350) else Color(0xFF42A5F5)
+        
+        // 🟠 Orange - DELIVERY action (softer, warmer)
+        ButtonAction.REACHED_DOORSTEP -> Color(0xFFFFB74D)  // Lighter Orange
+        
+        // 🔵 Blue - All other actions (softer, easier on eyes)
+        else -> Color(0xFF42A5F5)  // Lighter Blue
+    }
+}
 
 @Composable
 fun HomeScreen(
@@ -103,14 +133,16 @@ fun HomeScreen(
                                 .height(56.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (isOnline)
-                                    MaterialTheme.colorScheme.primary
+                                    getButtonColor(action, buttonPresses)  // Context-aware colors!
                                 else
-                                    MaterialTheme.colorScheme.surfaceVariant
+                                    MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = Color.White  // White text for better contrast
                             )
                         ) {
                             Text(
                                 text = action.localizedName(),
-                                style = MaterialTheme.typography.bodyLarge
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }

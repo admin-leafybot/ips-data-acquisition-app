@@ -132,7 +132,7 @@ class HomeViewModel(
             }
         }
         
-        val nextActions = ButtonAction.getNextActions(lastAction, hasEnteredDeliveryBuilding)
+        val nextActions = ButtonAction.getNextActions(lastAction, hasEnteredDeliveryBuilding, presses)
         _availableActions.value = nextActions
     }
     
@@ -225,8 +225,8 @@ class HomeViewModel(
                 return@launch
             }
             
-            // Check if this action requires floor input
-            if (ButtonAction.requiresFloorInput(action) && floorIndex == null) {
+            // Check if this action requires floor input (context-aware)
+            if (ButtonAction.requiresFloorInput(action, _buttonPresses.value) && floorIndex == null) {
                 _pendingAction.value = action
                 _showFloorDialog.value = true
                 return@launch
