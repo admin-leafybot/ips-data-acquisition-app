@@ -46,8 +46,13 @@
     <string name="btn_reached_delivery_corridor">डिलीवरी कॉरिडोर पहुंचे</string>
     <string name="btn_reached_doorstep">दरवाजे पर पहुंचे</string>
     <string name="btn_left_doorstep">दरवाजा छोड़ दिया</string>
+    <string name="btn_another_floor_in_building">दूसरी मंजिल पर जा रहे हैं</string>
+    <string name="btn_exiting_building">बिल्डिंग से बाहर निकल रहे हैं</string>
     <string name="btn_going_down_in_lift">लिफ्ट में नीचे जा रहे हैं</string>
-    <string name="btn_left_delivery_building">डिलीवरी बिल्डिंग छोड़ दी</string>
+    <string name="btn_back_to_ground_floor">भूतल पर वापस</string>
+    <string name="btn_left_delivery_building">वर्तमान बिल्डिंग छोड़ दी</string>
+    <string name="btn_another_building_in_society">दूसरी बिल्डिंग में जा रहे हैं</string>
+    <string name="btn_leaving_society">सोसाइटी छोड़ रहे हैं</string>
     
     <!-- Floor Selection Dialog -->
     <string name="select_floor">मंजिल संख्या चुनें</string>

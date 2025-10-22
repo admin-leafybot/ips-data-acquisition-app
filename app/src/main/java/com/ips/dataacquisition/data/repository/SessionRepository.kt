@@ -10,63 +10,95 @@ import com.ips.dataacquisition.data.remote.ApiService
 import com.ips.dataacquisition.data.remote.dto.ButtonPressRequest
 import com.ips.dataacquisition.data.remote.dto.SessionCreateRequest
 import com.ips.dataacquisition.data.remote.dto.SessionUpdateRequest
+import com.ips.dataacquisition.util.CloudLogger
+import io.sentry.SentryLevel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 
 class SessionRepository(
     private val sessionDao: SessionDao,
     private val buttonPressDao: ButtonPressDao,
-    private val apiService: ApiService
+    private val apiService: ApiService,
+    private val context: android.content.Context
 ) {
+    private val preferencesManager = com.ips.dataacquisition.data.local.PreferencesManager(context)
+    private var userIdPrefix = ""
+    
+    // Mutex to prevent concurrent session creation
+    private val sessionCreationMutex = Mutex()
+    
+    // Mutex to prevent concurrent session close/cancel operations
+    private val sessionModificationMutex = Mutex()
+    
+    // Mutex to prevent concurrent sync operations
+    private val syncMutex = Mutex()
+    
+    init {
+        // Initialize userId prefix for logging
+        CoroutineScope(Dispatchers.IO).launch {
+            userIdPrefix = "[${preferencesManager.getUserIdForLogging()}] "
+        }
+    }
     
     fun getAllSessions(): Flow<List<Session>> = sessionDao.getAllSessions()
     
     suspend fun getActiveSession(): Session? = sessionDao.getActiveSession()
     
     suspend fun getUnsyncedButtonPressCount(): Int {
-        val count = buttonPressDao.getUnsyncedCount()
-        android.util.Log.d("SessionRepo", "Queried unsynced button press count: $count")
-        return count
+        return buttonPressDao.getUnsyncedCount()
     }
     
     suspend fun createSession(): Result<String> {
-        return try {
-            val sessionId = UUID.randomUUID().toString()
-            val timestamp = System.currentTimeMillis()
-            
-            val session = Session(
-                sessionId = sessionId,
-                startTimestamp = timestamp,
-                status = SessionStatus.IN_PROGRESS
-            )
-            
-            // Save locally first
-            sessionDao.insertSession(session)
-            
-            // Try to create on backend
+        return sessionCreationMutex.withLock {
             try {
-                val response = apiService.createSession(
-                    SessionCreateRequest(sessionId, timestamp)
+                val sessionId = UUID.randomUUID().toString()
+                val timestamp = System.currentTimeMillis()
+                
+                val session = Session(
+                    sessionId = sessionId,
+                    startTimestamp = timestamp,
+                    status = SessionStatus.IN_PROGRESS
                 )
                 
-                if (response.isSuccessful && response.body()?.success == true) {
-                    sessionDao.markSessionSynced(sessionId)
+                // Save locally first
+                sessionDao.insertSession(session)
+                
+                // Update last activity timestamp
+                preferencesManager.updateLastActivity()
+                
+                // Try to create on backend
+                try {
+                    val response = apiService.createSession(
+                        SessionCreateRequest(sessionId, timestamp)
+                    )
+                    
+                    if (response.isSuccessful && response.body()?.success == true) {
+                        sessionDao.markSessionSynced(sessionId)
+                    }
+                } catch (e: Exception) {
+                    // Network error - session will be synced later
+                    e.printStackTrace()
                 }
+                
+                Result.success(sessionId)
             } catch (e: Exception) {
-                // Network error - session will be synced later
-                e.printStackTrace()
+                // Critical database failure - send to Sentry
+                CloudLogger.captureEvent("$userIdPrefix DB_INSERT_FAILED: Session creation failed - ${e.message}", SentryLevel.ERROR)
+                Result.failure(e)
             }
-            
-            Result.success(sessionId)
-        } catch (e: Exception) {
-            Result.failure(e)
         }
     }
     
     suspend fun closeSession(sessionId: String): Result<Unit> {
-        return try {
-            val timestamp = System.currentTimeMillis()
-            val session = sessionDao.getSessionById(sessionId)
+        return sessionModificationMutex.withLock {
+            try {
+                val timestamp = System.currentTimeMillis()
+                val session = sessionDao.getSessionById(sessionId)
             
             if (session != null) {
                 // First update: Mark as completed, not synced yet
@@ -97,25 +129,31 @@ class SessionRepository(
                     e.printStackTrace()
                 }
                 
-                // Clean up synced button presses for this session
-                // Wait a bit to ensure UI has time to show final state
+                // Clean up ONLY synced button presses for this session
+                // Unsynced button presses will be retried by background sync service
                 kotlinx.coroutines.delay(1000)
-                buttonPressDao.deleteButtonPressesBySession(sessionId)
-                android.util.Log.d("SessionRepo", "Cleaned up button presses for closed session: $sessionId (synced: $syncedSuccessfully)")
+                buttonPressDao.deleteSyncedButtonPressesBySession(sessionId)
+                android.util.Log.d("SessionRepo", "Cleaned up SYNCED button presses for closed session: $sessionId")
                 
                 Result.success(Unit)
             } else {
+                // Session not found - send to Sentry
+                CloudLogger.captureEvent("$userIdPrefix SESSION_CLOSE_FAILED: Session not found - $sessionId", SentryLevel.ERROR)
                 Result.failure(Exception("Session not found"))
             }
         } catch (e: Exception) {
+            // Critical session close failure - send to Sentry
+            CloudLogger.captureEvent("$userIdPrefix SESSION_CLOSE_FAILED: Database error - $sessionId - ${e.message}", SentryLevel.ERROR)
             Result.failure(e)
+        }
         }
     }
     
     suspend fun cancelSession(sessionId: String): Result<Unit> {
-        return try {
-            val timestamp = System.currentTimeMillis()
-            val session = sessionDao.getSessionById(sessionId)
+        return sessionModificationMutex.withLock {
+            try {
+                val timestamp = System.currentTimeMillis()
+                val session = sessionDao.getSessionById(sessionId)
             
             if (session != null) {
                 android.util.Log.d("SessionRepo", "Cancelling session: $sessionId")
@@ -144,18 +182,24 @@ class SessionRepository(
                     e.printStackTrace()
                 }
                 
-                // Clean up button presses for this cancelled session
+                // Clean up ONLY synced button presses for this cancelled session
+                // Unsynced ones will be retried by background sync
                 kotlinx.coroutines.delay(500)
-                buttonPressDao.deleteButtonPressesBySession(sessionId)
-                android.util.Log.d("SessionRepo", "Cleaned up button presses for cancelled session: $sessionId")
+                buttonPressDao.deleteSyncedButtonPressesBySession(sessionId)
+                android.util.Log.d("SessionRepo", "Cleaned up SYNCED button presses for cancelled session: $sessionId")
                 
                 Result.success(Unit)
             } else {
+                // Session not found - send to Sentry
+                CloudLogger.captureEvent("$userIdPrefix SESSION_CANCEL_FAILED: Session not found - $sessionId", SentryLevel.ERROR)
                 Result.failure(Exception("Session not found"))
             }
         } catch (e: Exception) {
+            // Critical session cancel failure - send to Sentry
+            CloudLogger.captureEvent("$userIdPrefix SESSION_CANCEL_FAILED: Database error - $sessionId - ${e.message}", SentryLevel.ERROR)
             android.util.Log.e("SessionRepo", "Error cancelling session", e)
             Result.failure(e)
+        }
         }
     }
     
@@ -172,11 +216,14 @@ class SessionRepository(
             
             // Save to queue, background service will sync
             buttonPressDao.insertButtonPress(buttonPress)
-            android.util.Log.d("SessionRepo", "Button press saved to queue: ${action.name} for session $sessionId, floor: $floorIndex")
             
             Result.success(Unit)
         } catch (e: Exception) {
-            android.util.Log.e("SessionRepo", "Failed to save button press", e)
+            android.util.Log.e("SessionRepo", "$userIdPrefix ❌ Button save failed: ${e.message}")
+            
+            // Critical database failure - send to Sentry
+            CloudLogger.captureEvent("$userIdPrefix DB_INSERT_FAILED: Button press insert failed - ${action.name} - ${e.message}", SentryLevel.ERROR)
+            
             Result.failure(e)
         }
     }
@@ -190,71 +237,68 @@ class SessionRepository(
     }
     
     suspend fun syncUnsyncedData(): Boolean {
-        return try {
-            var allSuccess = true
-            
-            // Sync button presses ONE BY ONE from queue
-            val unsyncedButtonPresses = buttonPressDao.getUnsyncedButtonPresses()
-            android.util.Log.d("SessionRepo", "=== QUEUE STATUS ===")
-            android.util.Log.d("SessionRepo", "Unsynced button presses in queue: ${unsyncedButtonPresses.size}")
+        // Get unsynced data OUTSIDE the lock to minimize lock time
+        val unsyncedButtonPresses = buttonPressDao.getUnsyncedButtonPresses()
+        val unsyncedSessions = sessionDao.getUnsyncedSessions()
+        
+        // Early return if nothing to sync - don't even acquire lock
+        if (unsyncedButtonPresses.isEmpty() && unsyncedSessions.isEmpty()) {
+            return true
+        }
+        
+        return syncMutex.withLock {
+            try {
+                var allSuccess = true
+                
+                // Sync button presses ONE BY ONE from queue
             
             if (unsyncedButtonPresses.isEmpty()) {
-                android.util.Log.d("SessionRepo", "Queue is empty, nothing to sync")
+                // No buttons to sync
+            } else {
+                android.util.Log.d("SessionRepo", "$userIdPrefix 📤 Syncing ${unsyncedButtonPresses.size} button presses")
             }
             
             for ((index, buttonPress) in unsyncedButtonPresses.withIndex()) {
                 try {
-                    android.util.Log.d("SessionRepo", "Processing queue item ${index + 1}/${unsyncedButtonPresses.size}")
-                    android.util.Log.d("SessionRepo", "  ID: ${buttonPress.id}")
-                    android.util.Log.d("SessionRepo", "  SessionId: ${buttonPress.sessionId}")
-                    android.util.Log.d("SessionRepo", "  Action: ${buttonPress.action}")
-                    android.util.Log.d("SessionRepo", "  Timestamp: ${buttonPress.timestamp}")
-                    android.util.Log.d("SessionRepo", "  FloorIndex: ${buttonPress.floorIndex}")
-                    android.util.Log.d("SessionRepo", "  IsSynced: ${buttonPress.isSynced}")
-                    
                     val request = ButtonPressRequest(
                         buttonPress.sessionId,
                         buttonPress.action,
                         buttonPress.timestamp,
-                        buttonPress.floorIndex  // Include floor number
+                        buttonPress.floorIndex
                     )
                     
-                    // Log the JSON being sent
-                    val gson = com.google.gson.Gson()
-                    val jsonRequest = gson.toJson(request)
-                    android.util.Log.d("SessionRepo", "Sending JSON to API: $jsonRequest")
-                    
                     val response = apiService.submitButtonPress(request)
-                    android.util.Log.d("SessionRepo", "API Response Code: ${response.code()}")
-                    android.util.Log.d("SessionRepo", "API Response Body: ${response.body()}")
                     
                     if (response.isSuccessful && response.body()?.success == true) {
-                        // Mark as synced but DON'T delete (need for UI flow in active sessions)
                         buttonPressDao.markButtonPressSynced(buttonPress.id)
-                        android.util.Log.d("SessionRepo", "✓ Button press synced: ${buttonPress.action}")
+                        android.util.Log.d("SessionRepo", "$userIdPrefix   ✓ ${buttonPress.action}")
                     } else {
                         val errorBody = response.errorBody()?.string()
-                        android.util.Log.e("SessionRepo", "✗ API failed for button press")
-                        android.util.Log.e("SessionRepo", "  Status: ${response.code()}")
-                        android.util.Log.e("SessionRepo", "  Message: ${response.message()}")
-                        android.util.Log.e("SessionRepo", "  Error body: $errorBody")
+                        android.util.Log.e("SessionRepo", "$userIdPrefix   ❌ ${buttonPress.action} - HTTP ${response.code()}")
+                        android.util.Log.e("SessionRepo", "$userIdPrefix      Error: $errorBody")
+                        
+                        // Send critical failures to Sentry
+                        if (response.code() >= 500) {
+                            CloudLogger.captureEvent("$userIdPrefix BUTTON_UPLOAD_FAILED: Server error ${response.code()} - ${buttonPress.action}", SentryLevel.ERROR)
+                        } else if (response.code() == 401) {
+                            CloudLogger.captureEvent("$userIdPrefix BUTTON_UPLOAD_FAILED: Authentication failed - ${buttonPress.action}", SentryLevel.ERROR)
+                        }
+                        
                         allSuccess = false
-                        // Stop processing queue if API fails
                         break
                     }
                 } catch (e: Exception) {
-                    android.util.Log.e("SessionRepo", "✗ Network error syncing button press", e)
-                    android.util.Log.e("SessionRepo", "  Error type: ${e.javaClass.simpleName}")
-                    android.util.Log.e("SessionRepo", "  Error message: ${e.message}")
-                    e.printStackTrace()
+                    android.util.Log.e("SessionRepo", "$userIdPrefix   ❌ ${buttonPress.action} - ${e.message}")
+                    
+                    // Send network exceptions to Sentry
+                    CloudLogger.captureEvent("$userIdPrefix BUTTON_UPLOAD_FAILED: Network exception - ${buttonPress.action} - ${e.message}", SentryLevel.ERROR)
+                    
                     allSuccess = false
-                    // Stop if network error
                     break
                 }
             }
             
-            // Sync sessions ONE BY ONE from queue
-            val unsyncedSessions = sessionDao.getUnsyncedSessions()
+            // Sync sessions ONE BY ONE from queue (data already fetched outside lock)
             for (session in unsyncedSessions) {
                 try {
                     if (session.endTimestamp != null) {
@@ -264,6 +308,8 @@ class SessionRepository(
                         if (response.isSuccessful && response.body()?.success == true) {
                             sessionDao.markSessionSynced(session.sessionId)
                         } else {
+                            // Send session close sync failures to Sentry
+                            CloudLogger.captureEvent("$userIdPrefix SESSION_SYNC_FAILED: Close session failed - ${session.sessionId} - HTTP ${response.code()}", SentryLevel.ERROR)
                             allSuccess = false
                             break
                         }
@@ -274,11 +320,15 @@ class SessionRepository(
                         if (response.isSuccessful && response.body()?.success == true) {
                             sessionDao.markSessionSynced(session.sessionId)
                         } else {
+                            // Send session create sync failures to Sentry
+                            CloudLogger.captureEvent("$userIdPrefix SESSION_SYNC_FAILED: Create session failed - ${session.sessionId} - HTTP ${response.code()}", SentryLevel.ERROR)
                             allSuccess = false
                             break
                         }
                     }
                 } catch (e: Exception) {
+                    // Send session sync network exceptions to Sentry
+                    CloudLogger.captureEvent("$userIdPrefix SESSION_SYNC_FAILED: Network exception - ${session.sessionId} - ${e.message}", SentryLevel.ERROR)
                     e.printStackTrace()
                     allSuccess = false
                     break
@@ -287,8 +337,11 @@ class SessionRepository(
             
             allSuccess
         } catch (e: Exception) {
+            // Send overall sync failure to Sentry
+            CloudLogger.captureEvent("$userIdPrefix SYNC_FAILED: Overall sync process failed - ${e.message}", SentryLevel.ERROR)
             e.printStackTrace()
             false
+        }
         }
     }
     

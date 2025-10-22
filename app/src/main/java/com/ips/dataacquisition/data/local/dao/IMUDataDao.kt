@@ -11,6 +11,9 @@ interface IMUDataDao {
     @Query("SELECT COUNT(*) FROM imu_data WHERE is_synced = 0")
     suspend fun getUnsyncedCount(): Int
     
+    @Query("SELECT COUNT(*) FROM imu_data")
+    suspend fun getTotalCount(): Long
+    
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertIMUData(imuData: IMUData)
     

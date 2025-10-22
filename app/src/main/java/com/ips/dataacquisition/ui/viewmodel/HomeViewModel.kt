@@ -74,7 +74,8 @@ class HomeViewModel(
         val database = AppDatabase.getDatabase(context)
         imuRepository = IMURepository(
             database.imuDataDao(),
-            RetrofitClientFactory.apiService
+            RetrofitClientFactory.apiService,
+            context
         )
         
         loadActiveSession()
@@ -115,9 +116,7 @@ class HomeViewModel(
     }
     
     private fun updateAvailableActions(presses: List<ButtonPress>) {
-        android.util.Log.d("HomeViewModel", "Updating available actions. Total presses: ${presses.size}")
         val lastPress = presses.lastOrNull()
-        android.util.Log.d("HomeViewModel", "Last button press: ${lastPress?.action}")
         
         // Check if user has entered delivery building in this session
         hasEnteredDeliveryBuilding = presses.any { 
@@ -128,13 +127,12 @@ class HomeViewModel(
             try {
                 ButtonAction.valueOf(it.action)
             } catch (e: Exception) {
-                android.util.Log.e("HomeViewModel", "Invalid action in database: ${it.action}")
+                android.util.Log.e("HomeViewModel", "❌ Invalid action: ${it.action}")
                 null
             }
         }
         
         val nextActions = ButtonAction.getNextActions(lastAction, hasEnteredDeliveryBuilding)
-        android.util.Log.d("HomeViewModel", "Next available actions: ${nextActions.map { it.name }}")
         _availableActions.value = nextActions
     }
     
@@ -142,7 +140,6 @@ class HomeViewModel(
         viewModelScope.launch {
             preferencesManager.isOnline.collect { online ->
                 _isOnline.value = online
-                android.util.Log.d("HomeViewModel", "Online state changed: $online")
                 
                 if (!online) {
                     // Reset samples counter when going offline
@@ -156,7 +153,6 @@ class HomeViewModel(
         viewModelScope.launch {
             preferencesManager.isCollectingData.collect { collecting ->
                 _isCollectingData.value = collecting
-                android.util.Log.d("HomeViewModel", "Collection state changed: $collecting")
             }
         }
         
@@ -176,21 +172,13 @@ class HomeViewModel(
                     val pendingButtons = sessionRepository.getUnsyncedButtonPressCount()
                     val total = pendingIMU + pendingButtons
                     
-                    android.util.Log.d("HomeViewModel", "=== PENDING SYNC MONITOR ===")
-                    android.util.Log.d("HomeViewModel", "Pending buttons: $pendingButtons")
-                    android.util.Log.d("HomeViewModel", "Pending IMU: $pendingIMU")
-                    android.util.Log.d("HomeViewModel", "Total pending: $total")
-                    android.util.Log.d("HomeViewModel", "Previous UI count: ${_pendingSyncCount.value}")
-                    
                     _pendingSyncCount.value = total
-                    
-                    android.util.Log.d("HomeViewModel", "Updated UI count to: $total")
                 } catch (e: Exception) {
                     android.util.Log.e("HomeViewModel", "Error checking pending sync count", e)
                 }
                 
-                // Check every 2 seconds for more responsive UI
-                delay(2000)
+                // Check every 30 seconds
+                delay(30_000)
             }
         }
     }
@@ -229,18 +217,16 @@ class HomeViewModel(
     
     fun onButtonPress(action: ButtonAction, floorIndex: Int? = null) {
         viewModelScope.launch {
-            android.util.Log.d("HomeViewModel", "Button pressed: ${action.name}, floor: $floorIndex")
+            android.util.Log.d("HomeViewModel", "🔘 ${action.name}${if (floorIndex != null) " (Floor $floorIndex)" else ""}")
             
             // Check if user is online
             if (!_isOnline.value) {
-                android.util.Log.w("HomeViewModel", "Button press ignored - user is OFFLINE")
                 _errorMessage.value = "Please go ONLINE to record data"
                 return@launch
             }
             
             // Check if this action requires floor input
             if (ButtonAction.requiresFloorInput(action) && floorIndex == null) {
-                android.util.Log.d("HomeViewModel", "Action requires floor input, showing dialog")
                 _pendingAction.value = action
                 _showFloorDialog.value = true
                 return@launch
@@ -253,24 +239,20 @@ class HomeViewModel(
             preferencesManager.updateLastActivity()
             
             try {
-                // Start session if this is the first button press (LEFT_RESTAURANT_BUILDING is now the first button)
+                // Start session if this is the first button press
                 val sessionId = if (_activeSession.value == null && 
                     action == ButtonAction.LEFT_RESTAURANT_BUILDING) {
-                    android.util.Log.d("HomeViewModel", "Creating new session...")
                     // Create new session
                     val result = sessionRepository.createSession()
                     if (result.isSuccess) {
                         val newSessionId = result.getOrNull()!!
-                        android.util.Log.d("HomeViewModel", "Session created: $newSessionId")
                         
                         // Reload active session from database
                         val session = sessionRepository.getActiveSession()
                         _activeSession.value = session
-                        android.util.Log.d("HomeViewModel", "Active session loaded: ${session?.sessionId}")
                         
                         // Start observing button presses for this new session
                         session?.let {
-                            android.util.Log.d("HomeViewModel", "Starting to observe button presses for session: ${it.sessionId}")
                             observeButtonPresses(it.sessionId)
                         }
                         
@@ -279,28 +261,23 @@ class HomeViewModel(
                         throw result.exceptionOrNull() ?: Exception("Failed to create session")
                     }
                 } else {
-                    android.util.Log.d("HomeViewModel", "Using existing session: ${_activeSession.value?.sessionId}")
                     _activeSession.value?.sessionId 
                         ?: throw Exception("No active session")
                 }
                 
                 // Record button press to database (queued for sync)
-                android.util.Log.d("HomeViewModel", "Recording button press: ${action.name} for session: $sessionId, floor: $floorIndex")
                 val result = sessionRepository.recordButtonPress(sessionId, action, floorIndex)
                 
                 if (result.isFailure) {
-                    android.util.Log.e("HomeViewModel", "Failed to record button press", result.exceptionOrNull())
+                    android.util.Log.e("HomeViewModel", "❌ Button save failed: ${result.exceptionOrNull()?.message}")
                     _errorMessage.value = result.exceptionOrNull()?.message
-                } else {
-                    android.util.Log.d("HomeViewModel", "Button press recorded successfully")
                 }
                 
-                // Control IMU data capture based on button pressed
-                controlIMUDataCapture(action)
+                // Control IMU data capture based on button pressed (pass sessionId for final 3-min capture)
+                controlIMUDataCapture(action, sessionId)
                 
-                // Close session if this is the last button
-                if (action == ButtonAction.LEFT_DELIVERY_BUILDING) {
-                    android.util.Log.d("HomeViewModel", "Closing session: $sessionId")
+                // Close session if this is the last button (after starting the final 3-min capture)
+                if (action == ButtonAction.LEAVING_SOCIETY) {
                     sessionRepository.closeSession(sessionId)
                     
                     // Show success message
@@ -317,13 +294,12 @@ class HomeViewModel(
                     _activeSession.value = null
                     _buttonPresses.value = emptyList()
                     hasEnteredDeliveryBuilding = false
-                    _availableActions.value = listOf(ButtonAction.LEFT_RESTAURANT_BUILDING)  // Reset to first button
+                    _availableActions.value = listOf(ButtonAction.LEFT_RESTAURANT_BUILDING)
                 }
                 
             } catch (e: Exception) {
-                android.util.Log.e("HomeViewModel", "Error in onButtonPress", e)
+                android.util.Log.e("HomeViewModel", "❌ Button error: ${e.message}")
                 _errorMessage.value = e.message
-                e.printStackTrace()
             } finally {
                 _isLoading.value = false
             }
@@ -353,36 +329,36 @@ class HomeViewModel(
     /**
      * Control IMU data capture based on which button was pressed
      */
-    private fun controlIMUDataCapture(action: ButtonAction) {
+    private fun controlIMUDataCapture(action: ButtonAction, sessionId: String) {
         val intent = Intent(context, com.ips.dataacquisition.service.IMUDataService::class.java)
         
         when (action) {
             ButtonAction.LEFT_RESTAURANT_BUILDING -> {
-                // Start 2-minute timed capture
-                android.util.Log.d("HomeViewModel", "📊 Starting 2-min timed capture (LEFT_RESTAURANT_BUILDING)")
+                android.util.Log.d("HomeViewModel", "📊 START 2-min capture")
                 intent.action = com.ips.dataacquisition.service.IMUDataService.ACTION_START_CAPTURE_TIMED
                 intent.putExtra(com.ips.dataacquisition.service.IMUDataService.EXTRA_DURATION_MS, 2 * 60 * 1000L)
+                intent.putExtra("session_id", sessionId)
                 context.startService(intent)
             }
             
             ButtonAction.REACHED_SOCIETY_GATE -> {
-                // Start continuous capture
-                android.util.Log.d("HomeViewModel", "📊 Starting CONTINUOUS capture (REACHED_SOCIETY_GATE)")
+                android.util.Log.d("HomeViewModel", "📊 START continuous capture")
                 intent.action = com.ips.dataacquisition.service.IMUDataService.ACTION_START_CAPTURE_CONTINUOUS
+                intent.putExtra("session_id", sessionId)
                 context.startService(intent)
             }
             
-            ButtonAction.LEFT_DELIVERY_BUILDING -> {
-                // Start 3-minute timed capture (will auto-stop after 3 mins)
-                android.util.Log.d("HomeViewModel", "📊 Starting 3-min timed capture (LEFT_DELIVERY_BUILDING)")
+            ButtonAction.LEAVING_SOCIETY -> {
+                android.util.Log.d("HomeViewModel", "📊 START 3-min capture (keeping sessionId for final data)")
                 intent.action = com.ips.dataacquisition.service.IMUDataService.ACTION_START_CAPTURE_TIMED
                 intent.putExtra(com.ips.dataacquisition.service.IMUDataService.EXTRA_DURATION_MS, 3 * 60 * 1000L)
+                // Pass the sessionId BEFORE closing the session so the final 3 minutes of data are associated with it
+                intent.putExtra("session_id", sessionId)
                 context.startService(intent)
             }
             
             else -> {
                 // Other buttons don't affect data capture
-                android.util.Log.d("HomeViewModel", "Button ${action.name} - no capture control action")
             }
         }
     }
@@ -393,15 +369,11 @@ class HomeViewModel(
                 val currentSession = _activeSession.value
                 if (currentSession != null) {
                     _isLoading.value = true
-                    android.util.Log.d("HomeViewModel", "Cancelling session: ${currentSession.sessionId}")
                     
                     val result = sessionRepository.cancelSession(currentSession.sessionId)
                     
                     if (result.isSuccess) {
-                        android.util.Log.d("HomeViewModel", "Session cancelled successfully")
-                        
                         // Stop IMU data capture
-                        android.util.Log.d("HomeViewModel", "📊 Stopping data capture (session cancelled)")
                         val intent = Intent(context, com.ips.dataacquisition.service.IMUDataService::class.java)
                         intent.action = com.ips.dataacquisition.service.IMUDataService.ACTION_STOP_CAPTURE
                         context.startService(intent)
@@ -411,18 +383,17 @@ class HomeViewModel(
                         _activeSession.value = null
                         _buttonPresses.value = emptyList()
                         hasEnteredDeliveryBuilding = false
-                        _availableActions.value = listOf(ButtonAction.LEFT_RESTAURANT_BUILDING)  // Reset to first button
+                        _availableActions.value = listOf(ButtonAction.LEFT_RESTAURANT_BUILDING)
                         
                         _errorMessage.value = "Session cancelled successfully"
                     } else {
-                        android.util.Log.e("HomeViewModel", "Failed to cancel session", result.exceptionOrNull())
                         _errorMessage.value = "Failed to cancel session: ${result.exceptionOrNull()?.message}"
                     }
                 } else {
                     _errorMessage.value = "No active session to cancel"
                 }
             } catch (e: Exception) {
-                android.util.Log.e("HomeViewModel", "Error cancelling session", e)
+                android.util.Log.e("HomeViewModel", "❌ Cancel error: ${e.message}")
                 _errorMessage.value = "Error: ${e.message}"
             } finally {
                 _isLoading.value = false

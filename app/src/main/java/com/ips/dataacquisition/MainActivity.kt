@@ -67,23 +67,13 @@ class MainActivity : ComponentActivity() {
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        android.util.Log.d("MainActivity", "Permission result received")
-        permissions.forEach { (permission, granted) ->
-            android.util.Log.d("MainActivity", "  $permission: $granted")
-        }
-        
         // Start services after permissions (granted or not)
         // Services will check permissions internally
-        android.util.Log.d("MainActivity", "Starting services after permission request...")
         startServices()
     }
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        android.util.Log.d("MainActivity", "==========================================")
-        android.util.Log.d("MainActivity", "MainActivity onCreate")
-        android.util.Log.d("MainActivity", "==========================================")
         
         preferencesManager = PreferencesManager(applicationContext)
         
@@ -95,11 +85,8 @@ class MainActivity : ComponentActivity() {
         authViewModel = ViewModelProvider(this, factory)[AuthViewModel::class.java]
         appVersionViewModel = ViewModelProvider(this, factory)[AppVersionViewModel::class.java]
         
-        android.util.Log.d("MainActivity", "ViewModels created")
-        
         // Check app version before proceeding
         val versionName = getAppVersion()
-        android.util.Log.d("MainActivity", "Checking app version: $versionName")
         appVersionViewModel.checkAppVersion(versionName)
         
         // Observe language changes to recreate activity
@@ -113,7 +100,6 @@ class MainActivity : ComponentActivity() {
                 // Initialize services only after version is verified as supported
                 LaunchedEffect(isVersionSupported) {
                     if (isVersionSupported == true) {
-                        android.util.Log.d("MainActivity", "Version verified, initializing services...")
                         observeOnlineStateForServices()
                         requestPermissions()
                     }
@@ -160,32 +146,11 @@ class MainActivity : ComponentActivity() {
     }
     
     private fun requestPermissions() {
-        // Check if we already have location permissions
-        val hasFineLocation = ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-        
-        val hasCoarseLocation = ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.ACCESS_COARSE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-        
-        android.util.Log.d("MainActivity", "Current permission state:")
-        android.util.Log.d("MainActivity", "  ACCESS_FINE_LOCATION: $hasFineLocation")
-        android.util.Log.d("MainActivity", "  ACCESS_COARSE_LOCATION: $hasCoarseLocation")
-        
-        // If we already have location permissions, start services immediately
-        if (hasFineLocation || hasCoarseLocation) {
-            android.util.Log.d("MainActivity", "Location permissions already granted, starting services")
-            startServices()
-            return
-        }
-        
-        // Request permissions if not granted
+        // Build list of required permissions
         val permissions = mutableListOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.BODY_SENSORS
         )
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -197,77 +162,66 @@ class MainActivity : ComponentActivity() {
             permissions.add(Manifest.permission.ACTIVITY_RECOGNITION)
         }
         
-        android.util.Log.d("MainActivity", "Requesting permissions: $permissions")
-        permissionLauncher.launch(permissions.toTypedArray())
+        // Check which permissions are missing
+        val missingPermissions = permissions.filter { permission ->
+            ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED
+        }
+        
+        // If all permissions granted, start services
+        if (missingPermissions.isEmpty()) {
+            startServices()
+            return
+        }
+        
+        // Request missing permissions
+        permissionLauncher.launch(missingPermissions.toTypedArray())
     }
     
     private fun startServices() {
-        android.util.Log.d("MainActivity", "Starting background services...")
-        
         // Start IMU Data Collection Service
         Intent(this, IMUDataService::class.java).also { intent ->
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(intent)
-                android.util.Log.d("MainActivity", "Started IMUDataService as foreground service")
             } else {
                 startService(intent)
-                android.util.Log.d("MainActivity", "Started IMUDataService")
             }
         }
         
-        // Start Data Sync Service
+        // Start Data Sync Service (includes Sentry monitoring)
+        // Note: startService() is safe to call multiple times - Android handles it
         Intent(this, DataSyncService::class.java).also { intent ->
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(intent)
-                android.util.Log.d("MainActivity", "Started DataSyncService as foreground service")
             } else {
                 startService(intent)
-                android.util.Log.d("MainActivity", "Started DataSyncService")
             }
         }
-        
-        android.util.Log.d("MainActivity", "All services started successfully")
     }
     
     private fun stopServices() {
-        android.util.Log.d("MainActivity", "Stopping background services...")
-        
         // Stop IMU Data Collection Service
         Intent(this, IMUDataService::class.java).also { intent ->
             stopService(intent)
-            android.util.Log.d("MainActivity", "Stopped IMUDataService")
         }
         
         // Stop Data Sync Service
         Intent(this, DataSyncService::class.java).also { intent ->
             stopService(intent)
-            android.util.Log.d("MainActivity", "Stopped DataSyncService")
         }
-        
-        android.util.Log.d("MainActivity", "All services stopped")
     }
     
     private fun observeOnlineStateForServices() {
         lifecycleScope.launch {
             preferencesManager.isOnline.collect { isOnline ->
-                android.util.Log.d("MainActivity", "Online state changed: $isOnline, controlling services...")
-                
                 if (isOnline) {
                     // User went online - start all services
                     startServices()
                 } else {
-                    // User went offline - stop IMU data collection but keep sync running until queue is empty
-                    android.util.Log.d("MainActivity", "User went offline - stopping IMU collection, keeping sync active for pending records")
-                    
-                    // Stop IMU Data Collection Service immediately (no new data)
+                    // User went offline - stop IMU data collection
                     Intent(this@MainActivity, IMUDataService::class.java).also { intent ->
                         stopService(intent)
-                        android.util.Log.d("MainActivity", "Stopped IMUDataService (user offline)")
                     }
-                    
-                    // Keep DataSyncService running to flush pending records
-                    // It will stop itself when queue is empty (handled in DataSyncService)
-                    android.util.Log.d("MainActivity", "DataSyncService will continue until all pending records are synced")
+                    // DataSyncService continues to flush pending records
                 }
             }
         }

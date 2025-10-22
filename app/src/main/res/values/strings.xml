@@ -46,8 +46,13 @@
     <string name="btn_reached_delivery_corridor">Reached Delivery Corridor</string>
     <string name="btn_reached_doorstep">Reached Doorstep</string>
     <string name="btn_left_doorstep">Left Doorstep</string>
+    <string name="btn_another_floor_in_building">Going to Another Floor</string>
+    <string name="btn_exiting_building">Exiting Building</string>
     <string name="btn_going_down_in_lift">Going down in Lift</string>
-    <string name="btn_left_delivery_building">Left Delivery Building</string>
+    <string name="btn_back_to_ground_floor">Back to Ground Floor</string>
+    <string name="btn_left_delivery_building">Left Current Building</string>
+    <string name="btn_another_building_in_society">Going to Another Building</string>
+    <string name="btn_leaving_society">Leaving Society</string>
     
     <!-- Floor Selection Dialog -->
     <string name="select_floor">Select Floor Number</string>

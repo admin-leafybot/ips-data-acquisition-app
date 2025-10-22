@@ -24,7 +24,8 @@ class ViewModelFactory(private val context: Context) : ViewModelProvider.Factory
                 val sessionRepository = SessionRepository(
                     database.sessionDao(),
                     database.buttonPressDao(),
-                    apiService
+                    apiService,
+                    context
                 )
                 HomeViewModel(context, sessionRepository, preferencesManager) as T
             }
@@ -32,7 +33,8 @@ class ViewModelFactory(private val context: Context) : ViewModelProvider.Factory
                 val sessionRepository = SessionRepository(
                     database.sessionDao(),
                     database.buttonPressDao(),
-                    apiService
+                    apiService,
+                    context
                 )
                 PaymentStatusViewModel(sessionRepository) as T
             }

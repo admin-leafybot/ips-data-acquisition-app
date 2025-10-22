@@ -37,6 +37,11 @@
         android:usesCleartextTraffic="true"
         tools:targetApi="31">
         
+        <!-- Sentry DSN Configuration -->
+        <meta-data
+            android:name="io.sentry.dsn"
+            android:value="https://76d30558f13a4d9a5fe371e564373e28@o4510234097614848.ingest.us.sentry.io/4510234099384320" />
+        
         <activity
             android:name=".MainActivity"
             android:exported="true"

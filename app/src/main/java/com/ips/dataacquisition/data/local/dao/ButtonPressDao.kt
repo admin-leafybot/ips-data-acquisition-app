@@ -15,6 +15,9 @@ interface ButtonPressDao {
     @Query("SELECT COUNT(*) FROM button_presses WHERE is_synced = 0")
     suspend fun getUnsyncedCount(): Int
     
+    @Query("SELECT COUNT(*) FROM button_presses")
+    suspend fun getTotalCount(): Int
+    
     @Query("SELECT * FROM button_presses WHERE session_id = :sessionId ORDER BY timestamp DESC LIMIT 1")
     suspend fun getLastButtonPress(sessionId: String): ButtonPress?
     
@@ -29,6 +32,9 @@ interface ButtonPressDao {
     
     @Query("DELETE FROM button_presses WHERE session_id = :sessionId")
     suspend fun deleteButtonPressesBySession(sessionId: String)
+    
+    @Query("DELETE FROM button_presses WHERE session_id = :sessionId AND is_synced = 1")
+    suspend fun deleteSyncedButtonPressesBySession(sessionId: String)
     
     @Query("DELETE FROM button_presses WHERE id = :id")
     suspend fun deleteButtonPress(id: Long)

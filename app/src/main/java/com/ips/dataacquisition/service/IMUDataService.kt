@@ -22,6 +22,8 @@ import com.ips.dataacquisition.data.model.IMUData
 import com.ips.dataacquisition.data.remote.RetrofitClientFactory
 import com.ips.dataacquisition.data.repository.IMURepository
 import com.ips.dataacquisition.data.repository.SessionRepository
+import com.ips.dataacquisition.util.CloudLogger
+import io.sentry.SentryLevel
 import kotlinx.coroutines.*
 import kotlin.math.atan2
 import kotlin.math.sqrt
@@ -118,52 +120,35 @@ class IMUDataService : Service(), SensorEventListener {
     override fun onCreate() {
         super.onCreate()
         
-        android.util.Log.d("IMUDataService", "========================================")
-        android.util.Log.d("IMUDataService", "IMUDataService STARTED")
-        android.util.Log.d("IMUDataService", "========================================")
-        
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)  // Still needed for GPS data in IMU readings
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         
         val database = AppDatabase.getDatabase(applicationContext)
         sessionRepository = SessionRepository(
             database.sessionDao(),
             database.buttonPressDao(),
-            RetrofitClientFactory.apiService
+            RetrofitClientFactory.apiService,
+            applicationContext
         )
         imuRepository = IMURepository(
             database.imuDataDao(),
-            RetrofitClientFactory.apiService
+            RetrofitClientFactory.apiService,
+            applicationContext
         )
         preferencesManager = com.ips.dataacquisition.data.local.PreferencesManager(applicationContext)
         
         setupSensors()
         createNotificationChannel()
-        
-        android.util.Log.d("IMUDataService", "Starting foreground with notification...")
         startForeground(NOTIFICATION_ID, createNotification())
-        
-        android.util.Log.d("IMUDataService", "Starting batch processing...")
         startBatchProcessing()
-        
-        android.util.Log.d("IMUDataService", "========================================")
-        android.util.Log.d("IMUDataService", "IMU service initialized - waiting for button press events")
-        android.util.Log.d("IMUDataService", "Data capture controlled by:")
-        android.util.Log.d("IMUDataService", "  - LEFT_RESTAURANT_BUILDING → 2 min timed capture")
-        android.util.Log.d("IMUDataService", "  - REACHED_SOCIETY_GATE → continuous capture")
-        android.util.Log.d("IMUDataService", "  - LEFT_DELIVERY_BUILDING → 3 min timed capture then stop")
-        android.util.Log.d("IMUDataService", "========================================")
     }
     
     override fun onBind(intent: Intent?): IBinder? = null
     
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        android.util.Log.d("IMUDataService", "onStartCommand called with action=${intent?.action}, flags=$flags, startId=$startId")
-        
         // Update session ID if provided
         intent?.getStringExtra("session_id")?.let {
             currentSessionId = it
-            android.util.Log.d("IMUDataService", "Session ID updated: $it")
         }
         
         // Handle control actions
@@ -187,27 +172,28 @@ class IMUDataService : Service(), SensorEventListener {
      * Start time-based data capture that automatically stops after a duration
      */
     private fun startTimedCapture(durationMs: Long) {
-        android.util.Log.d("IMUDataService", "========================================")
-        android.util.Log.d("IMUDataService", "Starting TIMED capture for ${durationMs / 1000} seconds")
-        android.util.Log.d("IMUDataService", "========================================")
+        android.util.Log.d("IMUDataService", "📊 TIMED capture: ${durationMs / 60000} min")
         
-        // Cancel any existing timer
         captureTimerJob?.cancel()
-        
-        // Start all sensors
         startAllSensors()
         isCollectingData = true
         captureMode = CaptureMode.TIMED
         
-        // Update preferences so UI reflects capture state
+        // Critical diagnostic for Sentry
+        if (accelerometer == null) {
+            serviceScope.launch {
+                val userId = preferencesManager.getUserIdForLogging()
+                CloudLogger.captureEvent("[$userId] IMU_DATA_CAPTURE_FAILED: Accelerometer sensor not available", SentryLevel.ERROR)
+            }
+        }
+        
         serviceScope.launch { 
             preferencesManager.setCollectingData(true)
         }
         
-        // Set timer to auto-stop
         captureTimerJob = serviceScope.launch {
             delay(durationMs)
-            android.util.Log.d("IMUDataService", "⏱️ Timer expired - auto-stopping data capture")
+            android.util.Log.d("IMUDataService", "⏱️ Timer expired - stopping")
             stopDataCapture()
         }
         
@@ -218,19 +204,21 @@ class IMUDataService : Service(), SensorEventListener {
      * Start continuous data capture that runs until explicitly stopped
      */
     private fun startContinuousCapture() {
-        android.util.Log.d("IMUDataService", "========================================")
-        android.util.Log.d("IMUDataService", "Starting CONTINUOUS capture")
-        android.util.Log.d("IMUDataService", "========================================")
+        android.util.Log.d("IMUDataService", "📊 CONTINUOUS capture")
         
-        // Cancel any existing timer
         captureTimerJob?.cancel()
-        
-        // Start all sensors
         startAllSensors()
         isCollectingData = true
         captureMode = CaptureMode.CONTINUOUS
         
-        // Update preferences so UI reflects capture state
+        // Critical diagnostic for Sentry
+        if (accelerometer == null) {
+            serviceScope.launch {
+                val userId = preferencesManager.getUserIdForLogging()
+                CloudLogger.captureEvent("[$userId] IMU_DATA_CAPTURE_FAILED: Accelerometer sensor not available", SentryLevel.ERROR)
+            }
+        }
+        
         serviceScope.launch { 
             preferencesManager.setCollectingData(true)
         }
@@ -242,27 +230,19 @@ class IMUDataService : Service(), SensorEventListener {
      * Stop data capture and all sensors
      */
     private fun stopDataCapture() {
-        android.util.Log.d("IMUDataService", "========================================")
-        android.util.Log.d("IMUDataService", "Stopping data capture")
-        android.util.Log.d("IMUDataService", "========================================")
+        android.util.Log.d("IMUDataService", "⏹️ STOPPED")
         
-        // Cancel timer if running
         captureTimerJob?.cancel()
         captureTimerJob = null
-        
-        // Stop collecting
         isCollectingData = false
         captureMode = CaptureMode.STOPPED
         
-        // Update preferences so UI reflects stopped state
         serviceScope.launch { 
             preferencesManager.setCollectingData(false)
         }
         
-        // Stop all sensors
         stopAllSensors()
-        
-        updateNotification("Idle - waiting for next session")
+        updateNotification("Idle")
     }
     
     override fun onTaskRemoved(intent: Intent?) {
@@ -309,8 +289,7 @@ class IMUDataService : Service(), SensorEventListener {
     }
     
     private fun startAllSensors() {
-        android.util.Log.d("IMUDataService", "Starting ALL sensors for data capture")
-        val delay = SensorManager.SENSOR_DELAY_FASTEST  // Max rate (~125 Hz on this device)
+        val delay = SensorManager.SENSOR_DELAY_FASTEST
         
         // Start GPS for location data
         startGPSUpdates()
@@ -379,19 +358,21 @@ class IMUDataService : Service(), SensorEventListener {
                     }
                 }
                 
-                // Log actual rate every 10 seconds for diagnostics
+                // Log summary every 30 seconds
                 val now = System.currentTimeMillis()
-                if (now - lastRateLogTime >= 10000) {
+                if (now - lastRateLogTime >= 30000) {
                     val duration = (now - lastRateLogTime) / 1000.0
-                    val accelRate = totalAccelEvents / duration
                     val captureRate = capturedSnapshots / duration
-                    android.util.Log.d("IMUDataService", "=== RATE DIAGNOSTICS ===")
-                    android.util.Log.d("IMUDataService", "Accelerometer events: $accelRate Hz (hardware)")
-                    android.util.Log.d("IMUDataService", "Captured snapshots: $captureRate Hz (target: 100 Hz)")
-                    android.util.Log.d("IMUDataService", "isCollectingData: $isCollectingData | Mode: $captureMode")
-                    android.util.Log.d("IMUDataService", "Downsampling: Skip every ${CAPTURE_PATTERN}th event (capture ${CAPTURE_PATTERN-1}/$CAPTURE_PATTERN = ${((CAPTURE_PATTERN-1)*100.0/CAPTURE_PATTERN).toInt()}%)")
+                    android.util.Log.d("IMUDataService", "📊 Collecting: ${captureRate.toInt()} Hz | Mode: $captureMode")
                     
-                    // Reset counters
+                    // Critical diagnostic for Sentry: No data captured
+                    if (isCollectingData && capturedSnapshots == 0) {
+                        serviceScope.launch {
+                            val userId = preferencesManager.getUserIdForLogging()
+                            CloudLogger.captureEvent("[$userId] IMU_DATA_CAPTURE_FAILED: No data captured in 30s despite isCollectingData=true", SentryLevel.ERROR)
+                        }
+                    }
+                    
                     totalAccelEvents = 0
                     capturedSnapshots = 0
                     lastRateLogTime = now
@@ -563,15 +544,8 @@ class IMUDataService : Service(), SensorEventListener {
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(locationResult: LocationResult) {
             locationResult.lastLocation?.let { location ->
-                // Simply capture GPS location for IMU data
+                // Capture GPS location for IMU data
                 currentLocation = location
-                
-                val speed = if (location.hasSpeed()) location.speed else 0f
-                val accuracy = if (location.hasAccuracy()) location.accuracy else Float.MAX_VALUE
-                val speedKmh = speed * 3.6
-                
-                android.util.Log.d("IMUDataService", String.format("📡 GPS: lat=%.6f, lon=%.6f, acc=%.0fm, speed=%.1f km/h", 
-                    location.latitude, location.longitude, accuracy, speedKmh))
             }
         }
     }
@@ -584,20 +558,12 @@ class IMUDataService : Service(), SensorEventListener {
         }
         
         if (batch.isEmpty()) {
-            android.util.Log.d("IMUDataService", "No sensor data in this batch")
             return
         }
-        
-        android.util.Log.d("IMUDataService", "=== BATCH PROCESSING ===")
-        android.util.Log.d("IMUDataService", "Processing batch with ${batch.size} sensor readings")
-        android.util.Log.d("IMUDataService", "Expected: ~300 per batch (100 Hz target × 3s)")
-        android.util.Log.d("IMUDataService", "Actual rate: ${batch.size / 3.0} Hz (may be lower if hardware throttled)")
         
         val sessionId = currentSessionId ?: serviceScope.async {
             sessionRepository.getActiveSession()?.sessionId
         }.await()
-        
-        android.util.Log.d("IMUDataService", "Session ID: ${sessionId ?: "null (no active session)"}")
         
         val imuDataList = batch.map { dataPoint ->
             IMUData(
@@ -688,9 +654,7 @@ class IMUDataService : Service(), SensorEventListener {
             )
         }
         
-        android.util.Log.d("IMUDataService", "Saving ${imuDataList.size} IMU data points to database")
         imuRepository.saveIMUDataBatch(imuDataList)
-        android.util.Log.d("IMUDataService", "IMU batch saved to queue successfully")
         
         // Update samples collected counter
         serviceScope.launch {
@@ -715,7 +679,6 @@ class IMUDataService : Service(), SensorEventListener {
     }
     
     private fun stopAllSensors() {
-        android.util.Log.d("IMUDataService", "Stopping all sensors")
         sensorManager.unregisterListener(this)
         stopGPSUpdates()
     }

@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
+    id("io.sentry.android.gradle") version "4.2.0"
 }
 
 android {
@@ -30,6 +31,24 @@ android {
             )
         }
     }
+    
+    buildFeatures {
+        buildConfig = true
+    }
+    
+    // Sentry configuration
+    sentry {
+        // Generates a JVM (Java, Kotlin, etc.) source bundle and uploads your source code to Sentry.
+        // This enables source context, allowing you to see your source
+        // code as part of your stack traces in Sentry.
+        includeSourceContext = true
+        
+        // Optional: Set organization slug (can be overridden in sentry.properties)
+        org.set(project.findProperty("sentry.org")?.toString() ?: "your-org-slug")
+        
+        // Optional: Set project name (can be overridden in sentry.properties)
+        projectName.set(project.findProperty("sentry.project")?.toString() ?: "ips-data-acquisition")
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -46,6 +65,9 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+        jniLibs {
+            useLegacyPackaging = false
         }
     }
 }
@@ -95,6 +117,9 @@ dependencies {
 
     // Gson
     implementation("com.google.code.gson:gson:2.10.1")
+
+    // Sentry for crash reporting and logging
+    implementation("io.sentry:sentry-android:7.4.0")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

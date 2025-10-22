@@ -18,11 +18,15 @@ import com.ips.dataacquisition.data.repository.IMURepository
 import com.ips.dataacquisition.data.repository.SessionRepository
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import com.ips.dataacquisition.util.CloudLogger
+import io.sentry.SentryLevel
 
 class DataSyncService : Service() {
     
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var syncJob: Job? = null
+    private var monitorJob: Job? = null
+    private var sentryMonitorJob: Job? = null
     
     private lateinit var sessionRepository: SessionRepository
     private lateinit var imuRepository: IMURepository
@@ -31,29 +35,30 @@ class DataSyncService : Service() {
     
     private var isNetworkAvailable = false
     private var consecutiveFailures = 0
+    private var lastNotificationMessage = ""
+    private var userIdPrefix = ""
+    
+    // For Sentry statistics tracking
     
     companion object {
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "data_sync_channel"
-        private const val BASE_SYNC_INTERVAL_MS = 3000L // 3 seconds when online (100 Hz × 3s = 300 records, send up to 1000)
+        private const val BASE_SYNC_INTERVAL_MS = 3000L // 3 seconds when online (mutex prevents race conditions)
         private const val MAX_SYNC_INTERVAL_MS = 300000L // 5 minutes max when offline
         private const val MAX_CONSECUTIVE_FAILURES = 5
     }
     
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            android.util.Log.d("DataSyncService", "✓ Network became available!")
+            android.util.Log.d("DataSyncService", "$userIdPrefix ✓ Network available")
             isNetworkAvailable = true
             consecutiveFailures = 0
-            // Trigger immediate sync when network becomes available
-            serviceScope.launch {
-                android.util.Log.d("DataSyncService", "Triggering immediate sync after network return")
-                syncData()
-            }
+            // Don't trigger immediate sync - let regular loop handle it
+            // This prevents race conditions with duplicate requests
         }
         
         override fun onLost(network: Network) {
-            android.util.Log.d("DataSyncService", "✗ Network lost")
+            android.util.Log.d("DataSyncService", "$userIdPrefix ✗ Network lost")
             isNetworkAvailable = false
         }
     }
@@ -61,56 +66,55 @@ class DataSyncService : Service() {
     override fun onCreate() {
         super.onCreate()
         
-        android.util.Log.d("DataSyncService", "========================================")
-        android.util.Log.d("DataSyncService", "DataSyncService STARTED")
-        android.util.Log.d("DataSyncService", "========================================")
-        
         val database = AppDatabase.getDatabase(applicationContext)
         sessionRepository = SessionRepository(
             database.sessionDao(),
             database.buttonPressDao(),
-            RetrofitClientFactory.apiService
+            RetrofitClientFactory.apiService,
+            applicationContext
         )
         imuRepository = IMURepository(
             database.imuDataDao(),
-            RetrofitClientFactory.apiService
+            RetrofitClientFactory.apiService,
+            applicationContext
         )
         
         preferencesManager = PreferencesManager(applicationContext)
-        
         connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         
-        // Register network callback
         registerNetworkCallback()
-        
-        // Check initial network state
         isNetworkAvailable = checkNetworkAvailability()
-        android.util.Log.d("DataSyncService", "Initial network state: $isNetworkAvailable")
         
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification("Initializing..."))
         
+        // Initialize userId prefix for logging
+        serviceScope.launch {
+            userIdPrefix = "[${preferencesManager.getUserIdForLogging()}] "
+        }
+        
         startSyncLoop()
+        startPendingRecordsMonitor()
+        startSentryStatisticsMonitor()
+        startUserActivityMonitor()
     }
     
     override fun onBind(intent: Intent?): IBinder? = null
     
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        android.util.Log.d("DataSyncService", "onStartCommand called with flags=$flags, startId=$startId")
         return START_STICKY
     }
     
     override fun onTaskRemoved(intent: Intent?) {
         super.onTaskRemoved(intent)
-        android.util.Log.w("DataSyncService", "Task removed - app minimized/closed")
-        // Service should continue running
     }
     
     override fun onDestroy() {
         super.onDestroy()
-        android.util.Log.w("DataSyncService", "Service being destroyed!")
         connectivityManager.unregisterNetworkCallback(networkCallback)
         syncJob?.cancel()
+        monitorJob?.cancel()
+        sentryMonitorJob?.cancel()
         serviceScope.cancel()
     }
     
@@ -133,23 +137,119 @@ class DataSyncService : Service() {
     private fun startSyncLoop() {
         syncJob?.cancel()
         syncJob = serviceScope.launch {
-            android.util.Log.d("DataSyncService", "Sync loop started")
             while (isActive) {
-                // Calculate dynamic interval based on network and failure count
                 val interval = calculateSyncInterval()
-                android.util.Log.d("DataSyncService", "Next sync in ${interval/1000} seconds. Network: $isNetworkAvailable, Failures: $consecutiveFailures")
-                
                 delay(interval)
                 
-                // Only attempt sync if network is available
                 if (isNetworkAvailable) {
-                    android.util.Log.d("DataSyncService", "Network available, attempting sync...")
                     syncData()
                 } else {
-                    android.util.Log.d("DataSyncService", "Network unavailable, skipping sync")
                     updateNotification("Waiting for network...")
                 }
             }
+        }
+    }
+    
+    private fun startPendingRecordsMonitor() {
+        monitorJob?.cancel()
+        monitorJob = serviceScope.launch {
+            while (isActive) {
+                delay(30_000) // Check every 30 seconds
+                
+                try {
+                    val pendingIMU = imuRepository.getUnsyncedCount()
+                    val pendingButtons = sessionRepository.getUnsyncedButtonPressCount()
+                    val total = pendingIMU + pendingButtons
+                    
+                    if (total > 0) {
+                        android.util.Log.d("DataSyncService", "$userIdPrefix 📊 Pending: $pendingButtons buttons + $pendingIMU IMU = $total total")
+                    }
+                } catch (e: Exception) {
+                    // Ignore errors in monitoring
+                }
+            }
+        }
+    }
+    
+    private fun startSentryStatisticsMonitor() {
+        sentryMonitorJob?.cancel()
+        sentryMonitorJob = serviceScope.launch {
+            // Wait a bit for initialization
+            delay(10_000)
+            
+            while (isActive) {
+                try {
+                    // Only report when user is online
+                    val isOnline = preferencesManager.isOnline.first()
+                    
+                    if (isOnline) {
+                        reportStatisticsToSentry()
+                    }
+                } catch (e: Exception) {
+                    // Ignore errors in monitoring
+                }
+                
+                // Report every 1 hour
+                delay(3_600_000)
+            }
+        }
+    }
+    
+    private fun startUserActivityMonitor() {
+        serviceScope.launch {
+            while (isActive) {
+                delay(600_000) // Check every 10 minutes
+                
+                try {
+                    val isOnline = preferencesManager.isOnline.first()
+                    if (isOnline) {
+                        val lastSessionTime = preferencesManager.getLastSessionTime()
+                        val currentTime = System.currentTimeMillis()
+                        val hoursSinceLastSession = (currentTime - lastSessionTime) / (1000 * 60 * 60)
+                        
+                        if (hoursSinceLastSession >= 2) {
+                            android.util.Log.d("DataSyncService", "🕐 Auto-offline: No session activity for 2+ hours")
+                            preferencesManager.setOnline(false)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Ignore errors in monitoring
+                }
+            }
+        }
+    }
+    
+    private suspend fun reportStatisticsToSentry() {
+        try {
+            // Get userId for the message
+            val userId = preferencesManager.getUserIdForLogging()
+            
+            // Get pending (unsynced) counts - this is what we really care about
+            val pendingIMU = imuRepository.getUnsyncedCount()
+            val pendingButtons = sessionRepository.getUnsyncedButtonPressCount()
+            
+            // Get database counts (includes both synced and unsynced data)
+            val database = AppDatabase.getDatabase(applicationContext)
+            val totalButtonPresses = database.buttonPressDao().getTotalCount()
+            
+            // For IMU: Use current session samples + any pending from previous sessions
+            val currentSessionSamples = preferencesManager.samplesCollected.first()
+            
+            // Total IMU = current session + pending from previous sessions
+            val imuCapturedTotal = currentSessionSamples + pendingIMU
+            val buttonsCapturedTotal = totalButtonPresses
+            
+            // Create full summary message
+            val summary = "[$userId] 1-HOUR STATS: Captured: $imuCapturedTotal IMU + $buttonsCapturedTotal buttons | Pending: $pendingIMU IMU + $pendingButtons buttons"
+            
+            // Log locally
+            android.util.Log.i("DataSyncService", summary)
+            
+            // Send to Sentry as standalone event
+            CloudLogger.captureEvent(summary, SentryLevel.INFO)
+            
+        } catch (e: Exception) {
+            android.util.Log.e("DataSyncService", "$userIdPrefix ❌ Sentry stats error: ${e.message}")
         }
     }
     
@@ -167,29 +267,20 @@ class DataSyncService : Service() {
     
     private suspend fun syncData() {
         try {
-            android.util.Log.d("DataSyncService", "Starting sync cycle. Network available: $isNetworkAvailable")
             updateNotification("Syncing...")
             
             var syncSuccess = true
             
             // Sync session data (button presses and sessions)
-            android.util.Log.d("DataSyncService", "Syncing session data...")
             val sessionSyncSuccess = sessionRepository.syncUnsyncedData()
             if (!sessionSyncSuccess) {
-                android.util.Log.w("DataSyncService", "Session sync failed")
                 syncSuccess = false
-            } else {
-                android.util.Log.d("DataSyncService", "Session sync successful")
             }
             
-            // Sync IMU data (if session sync succeeded or independently)
-            android.util.Log.d("DataSyncService", "Syncing IMU data...")
+            // Sync IMU data
             val imuSyncSuccess = imuRepository.syncIMUData()
             if (!imuSyncSuccess) {
-                android.util.Log.w("DataSyncService", "IMU sync failed")
                 syncSuccess = false
-            } else {
-                android.util.Log.d("DataSyncService", "IMU sync successful")
             }
             
             if (syncSuccess) {
@@ -199,42 +290,34 @@ class DataSyncService : Service() {
                 val totalPending = pendingIMU + pendingButtonPresses
                 
                 val message = if (totalPending > 0) {
-                    "Synced. Pending: $pendingButtonPresses button(s), $pendingIMU IMU"
+                    "Pending: $totalPending"
                 } else {
-                    "All data synced ✓"
+                    "All synced"
                 }
-                android.util.Log.d("DataSyncService", message)
                 updateNotification(message)
                 
-                // Check if user is offline AND no pending records - if so, stop service
+                // Check if user is offline AND no pending records
                 val isOnline = preferencesManager.isOnline.first()
                 if (!isOnline && totalPending == 0) {
-                    android.util.Log.d("DataSyncService", "========================================")
-                    android.util.Log.d("DataSyncService", "User is OFFLINE and ALL records synced")
-                    android.util.Log.d("DataSyncService", "Stopping DataSyncService gracefully")
-                    android.util.Log.d("DataSyncService", "========================================")
-                    updateNotification("All data synced. Service stopping...")
-                    delay(2000) // Show notification briefly
+                    updateNotification("Stopping...")
+                    delay(2000)
                     stopSelf()
                 }
             } else {
                 consecutiveFailures++
                 if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-                    // Too many failures, might be server issue
-                    android.util.Log.e("DataSyncService", "Too many consecutive failures ($consecutiveFailures)")
-                    updateNotification("Sync paused (server issue)")
+                    android.util.Log.e("DataSyncService", "$userIdPrefix ❌ Too many failures ($consecutiveFailures)")
+                    updateNotification("Sync paused")
                 } else {
-                    val pendingCount = imuRepository.getUnsyncedCount()
-                    android.util.Log.w("DataSyncService", "Sync failed (attempt $consecutiveFailures). Pending: $pendingCount")
-                    updateNotification("Sync failed. Pending: $pendingCount. Retrying...")
+                    android.util.Log.w("DataSyncService", "$userIdPrefix ❌ Failed ($consecutiveFailures)")
+                    updateNotification("Retrying...")
                 }
             }
             
         } catch (e: Exception) {
-            android.util.Log.e("DataSyncService", "Sync error", e)
-            e.printStackTrace()
+            android.util.Log.e("DataSyncService", "$userIdPrefix ❌ ${e.message}")
             consecutiveFailures++
-            updateNotification("Sync error. Retrying...")
+            updateNotification("Error, retrying...")
         }
     }
     
@@ -265,9 +348,13 @@ class DataSyncService : Service() {
     }
     
     private fun updateNotification(message: String) {
-        val notification = createNotification(message)
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.notify(NOTIFICATION_ID, notification)
+        // Only update if message changed to avoid excessive system notifications
+        if (message != lastNotificationMessage) {
+            lastNotificationMessage = message
+            val notification = createNotification(message)
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.notify(NOTIFICATION_ID, notification)
+        }
     }
     
 }

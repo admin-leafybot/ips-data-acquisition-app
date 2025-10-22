@@ -52,14 +52,14 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Sensor Status Indicators (ALWAYS VISIBLE)
-            SensorStatusCard(
-                isOnline = isOnline,
-                isCollectingData = isCollectingData,
-                samplesCollected = samplesCollected,
-                pendingSyncCount = pendingSyncCount
-            )
-            Spacer(modifier = Modifier.height(12.dp))
+            // Data Status Section - Hidden for now
+            // SensorStatusCard(
+            //     isOnline = isOnline,
+            //     isCollectingData = isCollectingData,
+            //     samplesCollected = samplesCollected,
+            //     pendingSyncCount = pendingSyncCount
+            // )
+            // Spacer(modifier = Modifier.height(12.dp))
 
             Spacer(modifier = Modifier.height(4.dp))
 

@@ -45,6 +45,12 @@ class PreferencesManager(private val context: Context) {
             preferences[LAST_ACTIVITY_KEY] ?: 0L
         }
     
+    suspend fun getLastSessionTime(): Long {
+        return context.dataStore.data.map { preferences ->
+            preferences[LAST_ACTIVITY_KEY] ?: System.currentTimeMillis()
+        }.first()
+    }
+    
     val isCollectingData: Flow<Boolean> = context.dataStore.data
         .map { preferences ->
             preferences[IS_COLLECTING_KEY] ?: false
@@ -137,6 +143,13 @@ class PreferencesManager(private val context: Context) {
                 null
             }
         }
+    
+    // Get userId synchronously for logging purposes
+    suspend fun getUserIdForLogging(): String {
+        return context.dataStore.data.map { preferences ->
+            preferences[USER_ID_KEY] ?: "unknown"
+        }.first()
+    }
     
     suspend fun saveUser(user: User) {
         context.dataStore.edit { preferences ->
