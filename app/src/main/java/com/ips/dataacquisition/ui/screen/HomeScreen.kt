@@ -93,12 +93,14 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Session Info
-            SessionInfoCard(
-                activeSession = activeSession,
-                buttonPresses = buttonPresses,
-                onCancelClick = { showCancelDialog = true }
-            )
+            // Session Info - only show when session is active
+            if (activeSession != null) {
+                SessionInfoCard(
+                    activeSession = activeSession,
+                    buttonPresses = buttonPresses,
+                    onCancelClick = { showCancelDialog = true }
+                )
+            }
 
             Spacer(modifier = Modifier.height(24.dp))
 

@@ -61,8 +61,9 @@ enum class ButtonAction(val displayName: String) {
                 REACHED_SOCIETY_GATE -> listOf(ENTERED_DELIVERY_BUILDING)
                 
                 ENTERED_DELIVERY_BUILDING -> listOf(
-                    ENTERED_ELEVATOR,
-                    CLIMBING_STAIRS
+                    REACHED_DELIVERY_CORRIDOR,  // Direct delivery on ground floor
+                    ENTERED_ELEVATOR,           // Use elevator to go up/down
+                    CLIMBING_STAIRS             // Use stairs to go up
                 )
                 
                 ENTERED_ELEVATOR -> listOf(
@@ -118,31 +119,63 @@ enum class ButtonAction(val displayName: String) {
                     COMING_DOWN_STAIRS   // Going down to lower floor
                 )
                 
-                // Exiting building - go down
-                EXITING_BUILDING -> listOf(
-                    GOING_DOWN_IN_LIFT,
-                    COMING_DOWN_STAIRS
-                )
+                // Exiting building - go down OR already on ground
+                EXITING_BUILDING -> {
+                    // Find the last vertical movement to determine current floor
+                    val lastFloorMovement = buttonPresses.findLast { press ->
+                        val action = press.action
+                        (action == CLIMBING_STAIRS.name || 
+                         action == GOING_UP_IN_LIFT.name || 
+                         action == COMING_DOWN_STAIRS.name || 
+                         action == GOING_DOWN_IN_LIFT.name) &&
+                        press.floorIndex != null
+                    }
+                    
+                    // If no floor movement found OR floor is 0, user is on ground
+                    val isOnGroundFloor = lastFloorMovement == null || lastFloorMovement.floorIndex == 0
+                    
+                    if (isOnGroundFloor) {
+                        // Already on ground floor - exit directly
+                        listOf(LEFT_DELIVERY_BUILDING)
+                    } else {
+                        // On upper floor - need to go down first
+                        listOf(
+                            GOING_DOWN_IN_LIFT,
+                            COMING_DOWN_STAIRS
+                        )
+                    }
+                }
                 
                 // After going down: Either reached another delivery floor OR ground floor
                 COMING_DOWN_STAIRS, GOING_DOWN_IN_LIFT -> {
-                    // Check if previous action was EXITING_BUILDING or ANOTHER_FLOOR_IN_BUILDING
-                    val previousAction = buttonPresses.lastOrNull()?.action
-                    val isExiting = previousAction == EXITING_BUILDING.name
-                    val isGoingToAnotherFloor = previousAction == ANOTHER_FLOOR_IN_BUILDING.name
+                    // Find the most recent vertical movement with a floor number (should be current action)
+                    val mostRecentFloorMovement = buttonPresses.findLast { press ->
+                        val action = press.action
+                        (action == CLIMBING_STAIRS.name || 
+                         action == GOING_UP_IN_LIFT.name || 
+                         action == COMING_DOWN_STAIRS.name || 
+                         action == GOING_DOWN_IN_LIFT.name) &&
+                        press.floorIndex != null
+                    }
+                    
+                    // Check what led to this movement
+                    val actionBeforeMovement = buttonPresses.findLast { press ->
+                        press.action == EXITING_BUILDING.name || 
+                        press.action == ANOTHER_FLOOR_IN_BUILDING.name
+                    }
+                    
+                    val isExiting = actionBeforeMovement?.action == EXITING_BUILDING.name
+                    val targetFloor = mostRecentFloorMovement?.floorIndex ?: 0
                     
                     if (isExiting) {
                         // When exiting, only show ground floor option (automatically go to ground)
                         listOf(BACK_TO_GROUND_FLOOR)
-                    } else if (isGoingToAnotherFloor) {
-                        // When going to another floor for delivery, go straight to delivery corridor
-                        listOf(REACHED_DELIVERY_CORRIDOR)
+                    } else if (targetFloor == 0) {
+                        // Going to ground floor for delivery - show ground floor option
+                        listOf(BACK_TO_GROUND_FLOOR)
                     } else {
-                        // Fallback: let user choose
-                        listOf(
-                            REACHED_DELIVERY_CORRIDOR,  // Delivery on this floor
-                            BACK_TO_GROUND_FLOOR        // Just passing through to exit
-                        )
+                        // Going to specific floor (not ground) - go straight to delivery corridor
+                        listOf(REACHED_DELIVERY_CORRIDOR)
                     }
                 }
                 
