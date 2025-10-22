@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit
 
 object RetrofitClientFactory {
     
-    private const val BASE_URL = "http://35.154.7.67:90/api/v1/"
+    private const val BASE_URL = "http://ida-api.leafybot.com:90/api/v1/"
     
     private lateinit var authInterceptor: AuthInterceptor
     private lateinit var apiServiceInstance: ApiService

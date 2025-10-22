@@ -14,7 +14,7 @@ import okio.buffer
 object RetrofitClient {
     
     // TODO: Replace with your actual backend URL
-    private const val BASE_URL = "http://35.154.7.67:90/api/v1/"
+    private const val BASE_URL = "http://ida-api.leafybot.com:90/api/v1/"
     
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
