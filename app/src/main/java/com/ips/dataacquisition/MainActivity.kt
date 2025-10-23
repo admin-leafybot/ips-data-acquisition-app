@@ -1,7 +1,10 @@
 package com.ips.dataacquisition
 
 import android.Manifest
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -64,6 +67,23 @@ class MainActivity : ComponentActivity() {
     private lateinit var appVersionViewModel: AppVersionViewModel
     private lateinit var preferencesManager: PreferencesManager
     
+    // Broadcast receiver for version unsupported notification
+    private val versionUnsupportedReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            android.util.Log.d("MainActivity", "📢 Broadcast received: ${intent?.action}")
+            if (intent?.action == "com.ips.dataacquisition.VERSION_UNSUPPORTED") {
+                android.util.Log.w("MainActivity", "⚠️ VERSION_UNSUPPORTED confirmed - re-checking version")
+                // Update the version status to trigger unsupported screen
+                lifecycleScope.launch {
+                    val versionName = getAppVersion()
+                    android.util.Log.d("MainActivity", "Current version: $versionName")
+                    appVersionViewModel.checkAppVersion(versionName)
+                    android.util.Log.d("MainActivity", "Version check triggered")
+                }
+            }
+        }
+    }
+    
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -84,6 +104,14 @@ class MainActivity : ComponentActivity() {
         settingsViewModel = ViewModelProvider(this, factory)[SettingsViewModel::class.java]
         authViewModel = ViewModelProvider(this, factory)[AuthViewModel::class.java]
         appVersionViewModel = ViewModelProvider(this, factory)[AppVersionViewModel::class.java]
+        
+        // Register broadcast receiver for version unsupported notifications
+        val filter = IntentFilter("com.ips.dataacquisition.VERSION_UNSUPPORTED")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(versionUnsupportedReceiver, filter, RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(versionUnsupportedReceiver, filter)
+        }
         
         // Check app version before proceeding
         val versionName = getAppVersion()
@@ -255,6 +283,16 @@ class MainActivity : ComponentActivity() {
         config.setLocale(locale)
         createConfigurationContext(config)
         resources.updateConfiguration(config, resources.displayMetrics)
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        // Unregister broadcast receiver
+        try {
+            unregisterReceiver(versionUnsupportedReceiver)
+        } catch (e: Exception) {
+            // Receiver might not be registered
+        }
     }
     
     private fun getAppVersion(): String {

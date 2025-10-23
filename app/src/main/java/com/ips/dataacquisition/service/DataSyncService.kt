@@ -27,11 +27,13 @@ class DataSyncService : Service() {
     private var syncJob: Job? = null
     private var monitorJob: Job? = null
     private var sentryMonitorJob: Job? = null
+    private var versionCheckJob: Job? = null
     
     private lateinit var sessionRepository: SessionRepository
     private lateinit var imuRepository: IMURepository
     private lateinit var connectivityManager: ConnectivityManager
     private lateinit var preferencesManager: PreferencesManager
+    private lateinit var appRepository: com.ips.dataacquisition.data.repository.AppRepository
     
     private var isNetworkAvailable = false
     private var consecutiveFailures = 0
@@ -46,6 +48,7 @@ class DataSyncService : Service() {
         private const val BASE_SYNC_INTERVAL_MS = 3000L // 3 seconds when online (mutex prevents race conditions)
         private const val MAX_SYNC_INTERVAL_MS = 300000L // 5 minutes max when offline
         private const val MAX_CONSECUTIVE_FAILURES = 5
+        private const val VERSION_CHECK_INTERVAL_MS = 1 * 60 * 1000L // Check every 30 minutes
     }
     
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
@@ -78,6 +81,9 @@ class DataSyncService : Service() {
             RetrofitClientFactory.apiService,
             applicationContext
         )
+        appRepository = com.ips.dataacquisition.data.repository.AppRepository(
+            RetrofitClientFactory.apiService
+        )
         
         preferencesManager = PreferencesManager(applicationContext)
         connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -98,6 +104,7 @@ class DataSyncService : Service() {
         startSentryStatisticsMonitor()
         startUserActivityMonitor()
         startSessionTimeoutMonitor()
+        startVersionCheckMonitor()
     }
     
     override fun onBind(intent: Intent?): IBinder? = null
@@ -116,6 +123,7 @@ class DataSyncService : Service() {
         syncJob?.cancel()
         monitorJob?.cancel()
         sentryMonitorJob?.cancel()
+        versionCheckJob?.cancel()
         serviceScope.cancel()
     }
     
@@ -249,6 +257,71 @@ class DataSyncService : Service() {
                     }
                 } catch (e: Exception) {
                     android.util.Log.e("DataSyncService", "$userIdPrefix ❌ Error in timeout monitor: ${e.message}")
+                }
+            }
+        }
+    }
+    
+    private fun stopAllServices() {
+        try {
+            android.util.Log.d("DataSyncService", "Stopping all services due to unsupported version")
+            
+            // Cancel all ongoing sync jobs gracefully
+            syncJob?.cancel()
+            monitorJob?.cancel()
+            sentryMonitorJob?.cancel()
+            versionCheckJob?.cancel()
+            
+            // Stop IMU Data Service
+            val imuIntent = Intent(applicationContext, IMUDataService::class.java)
+            applicationContext.stopService(imuIntent)
+            
+            // Note: DataSyncService will stop itself after this method returns
+        } catch (e: Exception) {
+            android.util.Log.e("DataSyncService", "Error stopping services: ${e.message}")
+        }
+    }
+    
+    private fun startVersionCheckMonitor() {
+        versionCheckJob?.cancel()
+        versionCheckJob = serviceScope.launch {
+            while (isActive) {
+                delay(VERSION_CHECK_INTERVAL_MS)
+                
+                android.util.Log.d("DataSyncService", "⏰ Periodic version check (every 30 min)")
+                
+                try {
+                    val versionName = applicationContext.packageManager
+                        .getPackageInfo(applicationContext.packageName, 0).versionName
+                    
+                    val result = appRepository.checkAppVersion(versionName)
+                    
+                    if (result.isSuccess) {
+                        val isSupported = result.getOrNull() ?: true
+                        if (!isSupported) {
+                            android.util.Log.w("DataSyncService", "⚠️ App version $versionName is no longer supported!")
+                            
+                            // Send explicit broadcast to MainActivity
+                            val intent = Intent("com.ips.dataacquisition.VERSION_UNSUPPORTED").apply {
+                                setPackage(applicationContext.packageName) // Explicit package
+                            }
+                            applicationContext.sendBroadcast(intent)
+                            
+                            android.util.Log.d("DataSyncService", "📢 Broadcast sent, waiting before stopping services...")
+                            
+                            // Small delay to ensure broadcast is delivered before stopping services
+                            delay(1000)
+                            
+                            // Stop all services since version is not supported
+                            stopAllServices()
+                            
+                            // Stop this service
+                            stopSelf()
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Silently fail - don't interrupt service
+                    android.util.Log.e("DataSyncService", "Periodic version check failed: ${e.message}")
                 }
             }
         }
