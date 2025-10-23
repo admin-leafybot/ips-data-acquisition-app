@@ -63,12 +63,14 @@ fun HomeScreen(
     showFloorDialog: Boolean,
     pendingAction: ButtonAction?,
     showSuccessMessage: Boolean,
+    timeoutWarning: com.ips.dataacquisition.ui.viewmodel.HomeViewModel.TimeoutWarningState?,
     onButtonPress: (ButtonAction) -> Unit,
     onFloorSelected: (Int) -> Unit,
     onDismissFloorDialog: () -> Unit,
     onToggleOnline: () -> Unit,
     onClearError: () -> Unit,
-    onCancelSession: () -> Unit
+    onCancelSession: () -> Unit,
+    onTimeoutDismiss: () -> Unit
 ) {
     var showCancelDialog by remember { mutableStateOf(false) }
     Box(modifier = Modifier.fillMaxSize()) {
@@ -215,6 +217,35 @@ fun HomeScreen(
                 dismissButton = {
                     TextButton(onClick = { showCancelDialog = false }) {
                         Text(stringResource(R.string.no_keep))
+                    }
+                }
+            )
+        }
+        
+        // Timeout Dialog
+        timeoutWarning?.let { warning ->
+            AlertDialog(
+                onDismissRequest = { }, // Non-dismissable
+                title = { 
+                    Text(
+                        text = stringResource(R.string.timeout_title_timeout),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                },
+                text = { 
+                    Column {
+                        Text(warning.message)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(R.string.timeout_description_timeout),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = onTimeoutDismiss) {
+                        Text(stringResource(R.string.timeout_ok))
                     }
                 }
             )

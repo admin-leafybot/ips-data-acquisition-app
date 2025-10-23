@@ -147,4 +147,15 @@
     <string name="version_check_title">Update Required</string>
     <string name="version_check_message">This app version is not supported. Please download the latest version of the app.</string>
     <string name="checking_version">Checking app version…</string>
+    
+    <!-- Session Timeout Dialog -->
+    <string name="timeout_title_warning">⚠️ Inactivity Warning</string>
+    <string name="timeout_title_timeout">⏱️ Session Timed Out</string>
+    <string name="timeout_message_inactive">No activity for %d minutes</string>
+    <string name="timeout_message_exceeded">Session exceeded maximum duration of %d minutes</string>
+    <string name="timeout_description_warning">Would you like to continue with this session or close this?</string>
+    <string name="timeout_description_timeout">Your session has been automatically cancelled to prevent collecting invalid data.</string>
+    <string name="timeout_continue">Continue Session</string>
+    <string name="timeout_cancel">Cancel Session</string>
+    <string name="timeout_ok">OK</string>
 </resources>

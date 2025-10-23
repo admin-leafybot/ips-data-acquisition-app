@@ -415,6 +415,7 @@ fun MainScreen(
                 val showFloorDialog by homeViewModel.showFloorDialog.collectAsStateWithLifecycle()
                 val pendingAction by homeViewModel.pendingAction.collectAsStateWithLifecycle()
                 val showSuccessMessage by homeViewModel.showSuccessMessage.collectAsStateWithLifecycle()
+                val timeoutWarning by homeViewModel.showTimeoutWarning.collectAsStateWithLifecycle()
                 
                 HomeScreen(
                     activeSession = activeSession,
@@ -429,12 +430,14 @@ fun MainScreen(
                     showFloorDialog = showFloorDialog,
                     pendingAction = pendingAction,
                     showSuccessMessage = showSuccessMessage,
+                    timeoutWarning = timeoutWarning,
                     onButtonPress = { action -> homeViewModel.onButtonPress(action) },
                     onFloorSelected = { floor -> homeViewModel.onFloorSelected(floor) },
                     onDismissFloorDialog = { homeViewModel.dismissFloorDialog() },
                     onToggleOnline = { homeViewModel.toggleOnlineStatus() },
                     onClearError = { homeViewModel.clearError() },
-                    onCancelSession = { homeViewModel.cancelSession() }
+                    onCancelSession = { homeViewModel.cancelSession() },
+                    onTimeoutDismiss = { homeViewModel.onTimeoutDismiss() }
                 )
             }
             

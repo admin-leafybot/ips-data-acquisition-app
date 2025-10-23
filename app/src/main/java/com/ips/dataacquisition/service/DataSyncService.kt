@@ -97,6 +97,7 @@ class DataSyncService : Service() {
         startPendingRecordsMonitor()
         startSentryStatisticsMonitor()
         startUserActivityMonitor()
+        startSessionTimeoutMonitor()
     }
     
     override fun onBind(intent: Intent?): IBinder? = null
@@ -214,6 +215,40 @@ class DataSyncService : Service() {
                     }
                 } catch (e: Exception) {
                     // Ignore errors in monitoring
+                }
+            }
+        }
+    }
+    
+    private fun startSessionTimeoutMonitor() {
+        serviceScope.launch {
+            while (isActive) {
+                delay(60_000) // Check every 1 minute
+                
+                try {
+                    // Check if there's an active session
+                    val activeSession = sessionRepository.getActiveSession()
+                    if (activeSession != null) {
+                        // Validate session timeout
+                        val validation = sessionRepository.validateSessionTimeout(activeSession.sessionId)
+                        
+                        // If timeout (not just warning), auto-cancel the session
+                        if (validation is SessionRepository.TimeoutValidation.Timeout) {
+                            android.util.Log.w("DataSyncService", "$userIdPrefix ⚠️ Auto-cancelling timed out session: ${activeSession.sessionId}")
+                            
+                            // Cancel the session
+                            sessionRepository.cancelSession(activeSession.sessionId)
+                            
+                            // Stop IMU data capture
+                            val intent = Intent(this@DataSyncService, IMUDataService::class.java)
+                            intent.action = IMUDataService.ACTION_STOP_CAPTURE
+                            startService(intent)
+                            
+                            android.util.Log.d("DataSyncService", "$userIdPrefix ✓ Session auto-cancelled due to ${validation.reason}")
+                        }
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("DataSyncService", "$userIdPrefix ❌ Error in timeout monitor: ${e.message}")
                 }
             }
         }

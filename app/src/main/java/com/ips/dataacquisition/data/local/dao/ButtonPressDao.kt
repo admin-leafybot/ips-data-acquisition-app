@@ -9,6 +9,9 @@ interface ButtonPressDao {
     @Query("SELECT * FROM button_presses WHERE session_id = :sessionId ORDER BY timestamp ASC")
     fun getButtonPressesBySession(sessionId: String): Flow<List<ButtonPress>>
     
+    @Query("SELECT * FROM button_presses WHERE session_id = :sessionId ORDER BY timestamp ASC")
+    suspend fun getButtonPressesForSession(sessionId: String): List<ButtonPress>
+    
     @Query("SELECT * FROM button_presses WHERE is_synced = 0 ORDER BY timestamp ASC")
     suspend fun getUnsyncedButtonPresses(): List<ButtonPress>
     

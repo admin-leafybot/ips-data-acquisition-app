@@ -38,10 +38,92 @@ class SessionRepository(
     // Mutex to prevent concurrent sync operations
     private val syncMutex = Mutex()
     
+    companion object {
+        // Timeout thresholds
+        const val MAX_BUTTON_PRESS_GAP_MS = 7 * 60 * 1000L // 7 minutes
+        const val MAX_SESSION_DURATION_MS = 30 * 60 * 1000L // 30 minutes
+    }
+    
     init {
         // Initialize userId prefix for logging
         CoroutineScope(Dispatchers.IO).launch {
             userIdPrefix = "[${preferencesManager.getUserIdForLogging()}] "
+        }
+    }
+    
+    // Timeout validation result
+    sealed class TimeoutValidation {
+        object Valid : TimeoutValidation()
+        data class Timeout(val minutesElapsed: Int, val message: String, val reason: TimeoutReason) : TimeoutValidation()
+    }
+    
+    enum class TimeoutReason {
+        INACTIVITY,
+        SESSION_DURATION
+    }
+    
+    /**
+     * Validates if the current session has timed out due to inactivity or duration
+     */
+    suspend fun validateSessionTimeout(sessionId: String): TimeoutValidation {
+        try {
+            val session = sessionDao.getSessionById(sessionId) ?: return TimeoutValidation.Valid
+            val buttonPresses = buttonPressDao.getButtonPressesForSession(sessionId)
+            val currentTime = System.currentTimeMillis()
+            
+            // Check 1: Session total duration (but this is more lenient - 60 minutes)
+            val sessionDuration = currentTime - session.startTimestamp
+            if (sessionDuration > MAX_SESSION_DURATION_MS) {
+                val minutesElapsed = (sessionDuration / 60000).toInt()
+                android.util.Log.w("SessionRepo", "$userIdPrefix ⚠️ Session timeout: ${minutesElapsed} minutes total duration")
+                
+                // Log to Sentry
+                CloudLogger.captureEvent(
+                    "$userIdPrefix SESSION_TIMEOUT: Session exceeded ${minutesElapsed} minutes (max 60)",
+                    SentryLevel.WARNING
+                )
+                
+                return TimeoutValidation.Timeout(
+                    minutesElapsed = minutesElapsed,
+                    message = "Session exceeded maximum duration of 60 minutes",
+                    reason = TimeoutReason.SESSION_DURATION
+                )
+            }
+            
+            // Check 2: Gap between last button press and now
+            // EXCLUDE: If last button was LEFT_RESTAURANT_BUILDING (travel time can be long)
+            val lastButtonPress = buttonPresses.maxByOrNull { it.timestamp }
+            if (lastButtonPress != null) {
+                val timeSinceLastButton = currentTime - lastButtonPress.timestamp
+                
+                // Skip timeout check if user is traveling from restaurant
+                if (lastButtonPress.action == ButtonAction.LEFT_RESTAURANT_BUILDING.name) {
+                    android.util.Log.d("SessionRepo", "$userIdPrefix ⏳ Skipping timeout check - user traveling from restaurant")
+                    return TimeoutValidation.Valid
+                }
+                
+                if (timeSinceLastButton > MAX_BUTTON_PRESS_GAP_MS) {
+                    val minutesElapsed = (timeSinceLastButton / 60000).toInt()
+                    android.util.Log.w("SessionRepo", "$userIdPrefix ⚠️ Inactivity timeout: ${minutesElapsed} minutes since last button press (${lastButtonPress.action})")
+                    
+                    // Log to Sentry
+                    CloudLogger.captureEvent(
+                        "$userIdPrefix SESSION_TIMEOUT: No button press for ${minutesElapsed} minutes after ${lastButtonPress.action} (max 10)",
+                        SentryLevel.WARNING
+                    )
+                    
+                    return TimeoutValidation.Timeout(
+                        minutesElapsed = minutesElapsed,
+                        message = "No activity for $minutesElapsed minutes",
+                        reason = TimeoutReason.INACTIVITY
+                    )
+                }
+            }
+            
+            return TimeoutValidation.Valid
+        } catch (e: Exception) {
+            android.util.Log.e("SessionRepo", "$userIdPrefix ❌ Error validating timeout: ${e.message}")
+            return TimeoutValidation.Valid // Fail open to not block user
         }
     }
     

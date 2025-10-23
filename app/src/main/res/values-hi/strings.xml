@@ -147,5 +147,17 @@
     <string name="version_check_title">अपडेट आवश्यक</string>
     <string name="version_check_message">यह ऐप वर्जन समर्थित नहीं है। कृपया ऐप का नवीनतम वर्जन डाउनलोड करें।</string>
     <string name="checking_version">ऐप वर्जन जांचा जा रहा है…</string>
+    
+    <!-- Session Timeout Dialog -->
+    <string name="timeout_title_warning">⚠️ निष्क्रियता चेतावनी</string>
+    <string name="timeout_title_timeout">⏱️ सत्र समय समाप्त</string>
+    <string name="timeout_message_inactive">%d मिनट से कोई गतिविधि नहीं</string>
+    <string name="timeout_message_exceeded">सत्र अधिकतम अवधि %d मिनट से अधिक हो गया</string>
+    <string name="timeout_description_warning">क्या आप इस सत्र को जारी रखना चाहते हैं या इसे बंद करना चाहते हैं?</string>
+    <string name="timeout_description_timeout">अमान्य डेटा एकत्र करने से रोकने के लिए आपका सत्र स्वचालित रूप से रद्द कर दिया गया है।</string>
+    <string name="timeout_continue">सत्र जारी रखें</string>
+    <string name="timeout_cancel">सत्र रद्द करें</string>
+    <string name="timeout_ok">ठीक है</string>
 </resources>
+
 

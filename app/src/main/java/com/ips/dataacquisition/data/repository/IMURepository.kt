@@ -80,7 +80,11 @@ class IMURepository(
                     }
                     
                     if (response.isSuccessful && responseBody?.success == true) {
-                        imuDataDao.deleteIMUDataByIds(dataPoints.map { it.id })
+                        // Delete in chunks to avoid SQLite parameter limit (999)
+                        val ids = dataPoints.map { it.id }
+                        ids.chunked(500).forEach { chunk ->
+                            imuDataDao.deleteIMUDataByIds(chunk)
+                        }
                         android.util.Log.d("IMURepository", "$userIdPrefix   ✓ Batch ${index + 1}: ${dataPoints.size} points synced")
                         
                         if (index < groupedBySession.size - 1) {

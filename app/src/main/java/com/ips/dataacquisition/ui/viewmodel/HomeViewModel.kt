@@ -62,6 +62,16 @@ class HomeViewModel(
     private val _pendingSyncCount = MutableStateFlow(0)
     val pendingSyncCount: StateFlow<Int> = _pendingSyncCount.asStateFlow()
     
+    // Timeout warning state
+    data class TimeoutWarningState(
+        val minutesElapsed: Int,
+        val message: String,
+        val isTimeout: Boolean // true = force cancel, false = warning
+    )
+    
+    private val _showTimeoutWarning = MutableStateFlow<TimeoutWarningState?>(null)
+    val showTimeoutWarning: StateFlow<TimeoutWarningState?> = _showTimeoutWarning.asStateFlow()
+    
     private var hasEnteredDeliveryBuilding = false
     private var buttonPressFlowJob: kotlinx.coroutines.Job? = null
     private var autoOfflineJob: kotlinx.coroutines.Job? = null
@@ -225,6 +235,25 @@ class HomeViewModel(
                 return@launch
             }
             
+            // Check for session timeout (only if session exists and not starting a new session)
+            val currentSession = _activeSession.value
+            if (currentSession != null && action != ButtonAction.LEFT_RESTAURANT_BUILDING) {
+                when (val validation = sessionRepository.validateSessionTimeout(currentSession.sessionId)) {
+                    is SessionRepository.TimeoutValidation.Timeout -> {
+                        // Force cancel session due to timeout
+                        _showTimeoutWarning.value = TimeoutWarningState(
+                            minutesElapsed = validation.minutesElapsed,
+                            message = validation.message,
+                            isTimeout = true
+                        )
+                        return@launch
+                    }
+                    SessionRepository.TimeoutValidation.Valid -> {
+                        // Continue normally
+                    }
+                }
+            }
+            
             // Check if this action requires floor input (context-aware)
             if (ButtonAction.requiresFloorInput(action, _buttonPresses.value) && floorIndex == null) {
                 _pendingAction.value = action
@@ -324,6 +353,12 @@ class HomeViewModel(
     fun dismissFloorDialog() {
         _showFloorDialog.value = false
         _pendingAction.value = null
+    }
+    
+    fun onTimeoutDismiss() {
+        // User acknowledged the timeout
+        _showTimeoutWarning.value = null
+        cancelSession()
     }
     
     /**
