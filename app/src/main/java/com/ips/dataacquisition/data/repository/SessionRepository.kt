@@ -131,6 +131,8 @@ class SessionRepository(
     
     suspend fun getActiveSession(): Session? = sessionDao.getActiveSession()
     
+    fun observeActiveSession(): Flow<Session?> = sessionDao.observeActiveSession()
+    
     suspend fun getUnsyncedButtonPressCount(): Int {
         return buttonPressDao.getUnsyncedCount()
     }

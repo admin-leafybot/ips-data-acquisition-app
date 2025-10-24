@@ -288,7 +288,13 @@ class DataSyncService : Service() {
             while (isActive) {
                 delay(VERSION_CHECK_INTERVAL_MS)
                 
-                android.util.Log.d("DataSyncService", "⏰ Periodic version check (every 30 min)")
+                android.util.Log.d("DataSyncService", "⏰ Periodic version check")
+                
+                // Skip if no network
+                if (!isNetworkAvailable) {
+                    android.util.Log.d("DataSyncService", "⏭️ Skipping version check - no network")
+                    continue
+                }
                 
                 try {
                     val versionName = applicationContext.packageManager

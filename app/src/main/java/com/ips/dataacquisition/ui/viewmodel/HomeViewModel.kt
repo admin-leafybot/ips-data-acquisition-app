@@ -98,12 +98,31 @@ class HomeViewModel(
     private fun loadActiveSession() {
         viewModelScope.launch {
             try {
+                // Initially load the active session
                 val session = sessionRepository.getActiveSession()
                 _activeSession.value = session
                 
                 session?.let { activeSession ->
                     // Start observing button presses
                     observeButtonPresses(activeSession.sessionId)
+                }
+                
+                // Start observing active session changes (e.g., when DataSyncService auto-cancels)
+                sessionRepository.observeActiveSession().collect { updatedSession ->
+                    if (_activeSession.value?.sessionId != updatedSession?.sessionId) {
+                        // Session changed (created, closed, or cancelled)
+                        _activeSession.value = updatedSession
+                        
+                        if (updatedSession != null) {
+                            observeButtonPresses(updatedSession.sessionId)
+                        } else {
+                            // Session was closed/cancelled
+                            buttonPressFlowJob?.cancel()
+                            _buttonPresses.value = emptyList()
+                            hasEnteredDeliveryBuilding = false
+                            _availableActions.value = listOf(ButtonAction.LEFT_RESTAURANT_BUILDING)
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 _errorMessage.value = e.message

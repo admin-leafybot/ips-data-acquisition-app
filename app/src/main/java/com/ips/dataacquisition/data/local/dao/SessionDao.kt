@@ -15,6 +15,9 @@ interface SessionDao {
     @Query("SELECT * FROM sessions WHERE end_timestamp IS NULL ORDER BY start_timestamp DESC LIMIT 1")
     suspend fun getActiveSession(): Session?
     
+    @Query("SELECT * FROM sessions WHERE end_timestamp IS NULL ORDER BY start_timestamp DESC LIMIT 1")
+    fun observeActiveSession(): Flow<Session?>
+    
     @Query("SELECT * FROM sessions WHERE is_synced = 0")
     suspend fun getUnsyncedSessions(): List<Session>
     

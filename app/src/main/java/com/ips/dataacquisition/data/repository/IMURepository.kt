@@ -109,8 +109,15 @@ class IMURepository(
                 } catch (e: Exception) {
                     android.util.Log.e("IMURepository", "$userIdPrefix   ❌ Batch ${index + 1} - ${e.message}")
                     
-                    // Send network exceptions to Sentry
-                    CloudLogger.captureEvent("$userIdPrefix IMU_UPLOAD_FAILED: Network exception - ${e.message}", SentryLevel.ERROR)
+                    // Only send unexpected exceptions to Sentry (filter out common network errors)
+                    val isExpectedNetworkError = e.message?.contains("Unable to resolve host", ignoreCase = true) == true ||
+                                                 e.message?.contains("Failed to connect", ignoreCase = true) == true ||
+                                                 e.message?.contains("Network is unreachable", ignoreCase = true) == true ||
+                                                 e.message?.contains("was cancelled", ignoreCase = true) == true
+                    
+                    if (!isExpectedNetworkError) {
+                        CloudLogger.captureEvent("$userIdPrefix IMU_UPLOAD_FAILED: Unexpected exception - ${e.message}", SentryLevel.ERROR)
+                    }
                     
                     allSuccess = false
                     break

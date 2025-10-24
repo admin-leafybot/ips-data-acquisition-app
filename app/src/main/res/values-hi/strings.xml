@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">डेटा सर्वे</string>
+    <string name="app_name">इंडोर सर्वे</string>
     
     <!-- Tab Names -->
     <string name="tab_home">होम</string>

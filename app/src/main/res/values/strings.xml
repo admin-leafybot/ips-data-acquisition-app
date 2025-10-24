@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Data Survey</string>
+    <string name="app_name">Indoor Survey</string>
     
     <!-- Tab Names -->
     <string name="tab_home">Home</string>
