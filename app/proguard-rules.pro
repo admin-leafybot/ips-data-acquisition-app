@@ -6,7 +6,7 @@
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
 # Keep data classes
--keep class com.ips.dataacquisition.data.model.** { *; }
+-keep class com.ai.indoorbrain.data.model.** { *; }
 
 # Retrofit
 -keepattributes Signature, InnerClasses, EnclosingMethod

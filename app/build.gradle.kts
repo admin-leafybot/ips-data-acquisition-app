@@ -2,17 +2,17 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
-    id("io.sentry.android.gradle") version "4.2.0"
+    id("io.sentry.android.gradle") version "5.12.1"
 }
 
 android {
-    namespace = "com.ips.dataacquisition"
-    compileSdk = 34
+    namespace = "ai.indoorbrain"
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.ips.dataacquisition"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 10
         versionName = "1.0.5"
 
@@ -119,7 +119,7 @@ dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
 
     // Sentry for crash reporting and logging
-    implementation("io.sentry:sentry-android:7.4.0")
+    implementation("io.sentry:sentry-android:8.24.0")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
