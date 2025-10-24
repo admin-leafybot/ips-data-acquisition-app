@@ -158,6 +158,12 @@
     <string name="timeout_continue">सत्र जारी रखें</string>
     <string name="timeout_cancel">सत्र रद्द करें</string>
     <string name="timeout_ok">ठीक है</string>
+    
+    <!-- Battery Optimization -->
+    <string name="battery_optimization_title">बैटरी अनुकूलन</string>
+    <string name="battery_optimization_disabled_message">पृष्ठभूमि सिंक ठीक से काम कर रहा है</string>
+    <string name="battery_optimization_enabled_message">⚠️ बैटरी अनुकूलन पृष्ठभूमि डेटा सिंक को रोक सकता है। विश्वसनीय संचालन के लिए कृपया इसे अक्षम करें।</string>
+    <string name="battery_optimization_disable_button">बैटरी अनुकूलन अक्षम करें</string>
 </resources>
 
 

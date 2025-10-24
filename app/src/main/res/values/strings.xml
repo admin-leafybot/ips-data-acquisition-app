@@ -158,4 +158,10 @@
     <string name="timeout_continue">Continue Session</string>
     <string name="timeout_cancel">Cancel Session</string>
     <string name="timeout_ok">OK</string>
+    
+    <!-- Battery Optimization -->
+    <string name="battery_optimization_title">Battery Optimization</string>
+    <string name="battery_optimization_disabled_message">Background sync is working properly</string>
+    <string name="battery_optimization_enabled_message">⚠️ Battery optimization may prevent background data sync. Please disable it for reliable operation.</string>
+    <string name="battery_optimization_disable_button">Disable Battery Optimization</string>
 </resources>

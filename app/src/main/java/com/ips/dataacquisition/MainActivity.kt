@@ -46,6 +46,7 @@ import com.ips.dataacquisition.ui.screen.HomeScreen
 import com.ips.dataacquisition.ui.screen.LoginScreen
 import com.ips.dataacquisition.ui.screen.PaymentStatusScreen
 import com.ips.dataacquisition.ui.screen.SettingsScreen
+import com.ips.dataacquisition.util.BatteryOptimizationHelper
 import com.ips.dataacquisition.ui.screen.SignupScreen
 import com.ips.dataacquisition.ui.theme.IPSDataAcquisitionTheme
 import com.ips.dataacquisition.ui.viewmodel.AppVersionViewModel
@@ -244,6 +245,9 @@ class MainActivity : ComponentActivity() {
                 if (isOnline) {
                     // User went online - start all services
                     startServices()
+                    
+                    // Check battery optimization status and warn if needed
+                    checkBatteryOptimizationStatus()
                 } else {
                     // User went offline - stop IMU data collection
                     Intent(this@MainActivity, IMUDataService::class.java).also { intent ->
@@ -252,6 +256,14 @@ class MainActivity : ComponentActivity() {
                     // DataSyncService continues to flush pending records
                 }
             }
+        }
+    }
+    
+    private fun checkBatteryOptimizationStatus() {
+        if (BatteryOptimizationHelper.shouldShowBatteryOptimizationRequest(this)) {
+            android.util.Log.w("MainActivity", "⚠️ Battery optimization is enabled - background sync may not work properly")
+            // You could show a snackbar or dialog here to warn the user
+            // For now, we'll just log it and let them discover it in settings
         }
     }
     
@@ -517,7 +529,10 @@ fun MainScreen(
                     onLanguageChange = { languageCode ->
                         settingsViewModel.changeLanguage(languageCode)
                     },
-                    onLogout = { authViewModel.logout() }
+                    onLogout = { authViewModel.logout() },
+                    onRequestBatteryOptimization = {
+                        settingsViewModel.requestBatteryOptimizationExemption()
+                    }
                 )
             }
         }
