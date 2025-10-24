@@ -113,9 +113,9 @@ class IMUDataService : Service(), SensorEventListener {
         private const val CAPTURE_DURATION_AFTER_LEFT_DELIVERY = 3 * 60 * 1000L // 3 minutes
         
         // Intent actions for controlling data capture
-        const val ACTION_START_CAPTURE_TIMED = "com.ips.dataacquisition.START_CAPTURE_TIMED"
-        const val ACTION_START_CAPTURE_CONTINUOUS = "com.ips.dataacquisition.START_CAPTURE_CONTINUOUS"
-        const val ACTION_STOP_CAPTURE = "com.ips.dataacquisition.STOP_CAPTURE"
+        const val ACTION_START_CAPTURE_TIMED = "ai.indoorbrain.START_CAPTURE_TIMED"
+        const val ACTION_START_CAPTURE_CONTINUOUS = "ai.indoorbrain.START_CAPTURE_CONTINUOUS"
+        const val ACTION_STOP_CAPTURE = "ai.indoorbrain.STOP_CAPTURE"
         const val EXTRA_DURATION_MS = "duration_ms"
     }
     

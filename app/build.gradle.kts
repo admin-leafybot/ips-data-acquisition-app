@@ -10,7 +10,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.ips.dataacquisition"
+        applicationId = "ai.indoorbrain"
         minSdk = 26
         targetSdk = 35
         versionCode = 10
