@@ -1,0 +1,73 @@
+package ai.indoorbrain.data.remote
+
+import ai.indoorbrain.data.model.*
+import ai.indoorbrain.data.remote.dto.*
+import retrofit2.Response
+import retrofit2.http.*
+
+interface ApiService {
+    
+    // ==================== APP VERSION CHECK ====================
+    
+    @POST("app/checkAppVersion")
+    suspend fun checkAppVersion(
+        @Body request: AppVersionRequest
+    ): Response<AppVersionResponse>
+    
+    // ==================== AUTH ENDPOINTS ====================
+    
+    @POST("user/signup")
+    suspend fun signup(
+        @Body request: SignupRequest
+    ): Response<SignupResponse>
+    
+    @POST("user/login")
+    suspend fun login(
+        @Body request: LoginRequest
+    ): Response<LoginResponse>
+    
+    @POST("user/refresh-token")
+    suspend fun refreshToken(
+        @Body request: RefreshTokenRequest
+    ): Response<RefreshTokenResponse>
+    
+    // ==================== SESSION ENDPOINTS ====================
+    
+    @POST("sessions/create")
+    suspend fun createSession(
+        @Body request: SessionCreateRequest
+    ): Response<ApiResponse<SessionCreateResponse>>
+    
+    @POST("sessions/close")
+    suspend fun closeSession(
+        @Body request: SessionUpdateRequest
+    ): Response<ApiResponse<Unit>>
+    
+    @POST("sessions/cancel")
+    suspend fun cancelSession(
+        @Body request: SessionUpdateRequest
+    ): Response<ApiResponse<Unit>>
+    
+    @POST("button-presses")
+    suspend fun submitButtonPress(
+        @Body request: ButtonPressRequest
+    ): Response<ApiResponse<Unit>>
+    
+    @POST("imu-data/upload")
+    suspend fun uploadIMUData(
+        @Body request: IMUDataUploadRequest
+    ): Response<ApiResponse<Unit>>
+    
+    @GET("sessions")
+    suspend fun getSessions(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 50
+    ): Response<ApiResponse<List<Session>>>
+    
+    @GET("bonuses")
+    suspend fun getBonuses(
+        @Query("start_date") startDate: String?,
+        @Query("end_date") endDate: String?
+    ): Response<ApiResponse<List<Bonus>>>
+}
+

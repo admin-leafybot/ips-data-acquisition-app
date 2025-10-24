@@ -142,6 +142,7 @@
     <string name="logout">Logout</string>
     <string name="logged_in_as">Logged in as %s</string>
     <string name="user_info">User Information</string>
+    <string name="delete_account">Delete Account</string>
     
     <!-- App Version Check -->
     <string name="version_check_title">Update Required</string>

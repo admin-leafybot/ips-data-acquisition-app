@@ -142,6 +142,7 @@
     <string name="logout">लॉगआउट</string>
     <string name="logged_in_as">%s के रूप में लॉग इन</string>
     <string name="user_info">उपयोगकर्ता जानकारी</string>
+    <string name="delete_account">खाता हटाएं</string>
     
     <!-- App Version Check -->
     <string name="version_check_title">अपडेट आवश्यक</string>
