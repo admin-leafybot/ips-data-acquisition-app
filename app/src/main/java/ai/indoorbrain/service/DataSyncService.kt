@@ -385,6 +385,17 @@ class DataSyncService : Service() {
         try {
             updateNotification("Syncing...")
             
+            // Check authentication before syncing
+            val tokenManager = RetrofitClientFactory.tokenManager
+            val isAuthenticated = tokenManager.isAuthenticated()
+            
+            if (!isAuthenticated) {
+                Log.w("DataSyncService", "$userIdPrefix ⚠️ User not authenticated, stopping sync")
+                updateNotification("Please login")
+                stopSelf()
+                return
+            }
+            
             var syncSuccess = true
             
             // Sync session data (button presses and sessions)

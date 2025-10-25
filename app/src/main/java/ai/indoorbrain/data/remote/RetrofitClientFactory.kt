@@ -18,6 +18,7 @@ object RetrofitClientFactory {
     private const val BASE_URL = "http://ida-api.leafybot.com:90/api/v1/"
     
     private lateinit var authInterceptor: AuthInterceptor
+    private lateinit var tokenManagerInstance: TokenManager
     private lateinit var apiServiceInstance: ApiService
     private var isInitialized = false
     
@@ -25,7 +26,6 @@ object RetrofitClientFactory {
         if (isInitialized) return
         
         val preferencesManager = PreferencesManager(context)
-        authInterceptor = AuthInterceptor(preferencesManager)
         
         val loggingInterceptor = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
@@ -47,7 +47,6 @@ object RetrofitClientFactory {
         }
         
         val okHttpClient = OkHttpClient.Builder()
-            .addInterceptor(authInterceptor)  // Add auth token to requests
             .addInterceptor(gzipInterceptor)
             .addInterceptor(loggingInterceptor)
             .connectTimeout(60, TimeUnit.SECONDS)
@@ -62,6 +61,23 @@ object RetrofitClientFactory {
             .build()
         
         apiServiceInstance = retrofit.create(ApiService::class.java)
+        
+        // Create token manager and auth interceptor after apiService is available
+        tokenManagerInstance = TokenManager(preferencesManager, apiServiceInstance)
+        authInterceptor = AuthInterceptor(preferencesManager, tokenManagerInstance)
+        
+        // Rebuild client with auth interceptor
+        val finalOkHttpClient = okHttpClient.newBuilder()
+            .addInterceptor(authInterceptor)
+            .build()
+        
+        val finalRetrofit = Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .client(finalOkHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+        
+        apiServiceInstance = finalRetrofit.create(ApiService::class.java)
         isInitialized = true
     }
     
@@ -69,6 +85,12 @@ object RetrofitClientFactory {
         get() {
             check(isInitialized) { "RetrofitClientFactory must be initialized first. Call initialize(context) in Application.onCreate()" }
             return apiServiceInstance
+        }
+    
+    val tokenManager: TokenManager
+        get() {
+            check(isInitialized) { "RetrofitClientFactory must be initialized first. Call initialize(context) in Application.onCreate()" }
+            return tokenManagerInstance
         }
     
     private fun gzip(body: RequestBody): RequestBody {

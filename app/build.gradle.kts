@@ -43,6 +43,9 @@ android {
         // code as part of your stack traces in Sentry.
         includeSourceContext = true
         
+        // Disable automatic uploads to prevent build conflicts
+        autoUploadProguardMapping = false
+        
         // Optional: Set organization slug (can be overridden in sentry.properties)
         org.set(project.findProperty("sentry.org")?.toString() ?: "your-org-slug")
         
